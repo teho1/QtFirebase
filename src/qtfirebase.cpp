@@ -2,6 +2,7 @@
 
 #include <QMutableMapIterator>
 #include <QThread>
+#include "androidextras.h"
 
 QtFirebase *QtFirebase::self = nullptr;
 
@@ -116,10 +117,10 @@ void QtFirebase::requestInit()
 
         jobject activity = PlatformUtils::getNativeWindow();
 
-        QAndroidJniEnvironment env;
+        QJniEnvironment env;
 
         // Create the Firebase app.
-        _firebaseApp = firebase::App::Create(firebase::AppOptions(), env, activity);
+        _firebaseApp = firebase::App::Create(firebase::AppOptions(), env.jniEnv(), activity);
 
         #else // Q_OS_ANDROID
 

@@ -54,7 +54,7 @@ android: {
     # https://github.com/firebase/quickstart-cpp/blob/e8c20f678a06a28ebb73132abcd79d93b27622d9/messaging/testapp/src/android/java/com/google/firebase/example/TestappNativeActivity.java
 
     message("QtFirebase Android base")
-    QT += androidextras gui-private
+    QT +=  gui-private
 
     # Specify the STL variant that is to be used in the app .pro file with the $$QTFIREBASE_STL_VARIANT variable
     # c++:      LLVM libc++ runtime

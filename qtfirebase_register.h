@@ -80,10 +80,10 @@ static QObject *QtFirebaseDatabaseProvider(QQmlEngine *engine, QJSEngine *script
 
 #endif // QTFIREBASE_BUILD_DATABASE
 
-static void registerQtFirebase() {
+void registerQtFirebase() {
 
 #if defined(QTFIREBASE_BUILD_ALL) || defined(QTFIREBASE_BUILD_ANALYTICS)
-    qmlRegisterType<QtFirebaseAnalytics>("QtFirebase", 1, 0, "Analytics");
+    qmlRegisterSingletonInstance<QtFirebaseAnalytics>("QtFirebase", 1, 0, "Analytics", QtFirebaseAnalytics::instance());
 #endif
 
 #if defined(QTFIREBASE_BUILD_ALL) || defined(QTFIREBASE_BUILD_MESSAGING)
@@ -103,7 +103,7 @@ static void registerQtFirebase() {
 #endif
 
 #if defined(QTFIREBASE_BUILD_ALL) || defined(QTFIREBASE_BUILD_AUTH)
-    qmlRegisterType<QtFirebaseAuth>("QtFirebase", 1, 0, "Auth");
+    qmlRegisterSingletonInstance<QtFirebaseAuth>("QtFirebase", 1, 0, "Auth", QtFirebaseAuth::instance());
 #endif
 
 #if defined(QTFIREBASE_BUILD_ALL) || defined(QTFIREBASE_BUILD_DATABASE)
@@ -114,6 +114,6 @@ static void registerQtFirebase() {
 #endif
 }
 
-Q_COREAPP_STARTUP_FUNCTION(registerQtFirebase)
+//Q_COREAPP_STARTUP_FUNCTION(registerQtFirebase)
 
 #endif // QTFIREBASE_REGISTER_TYPES_H
