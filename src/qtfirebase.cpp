@@ -130,13 +130,16 @@ void QtFirebase::requestInit()
         #endif
 
         qDebug("QtFirebase::requestInit created the Firebase App (%x)",static_cast<int>(reinterpret_cast<intptr_t>(_firebaseApp)));
-
         _initTimer->stop();
         delete _initTimer;
 
-        _ready = true;
-        qDebug() << self << "::requestInit" << "initialized";
-        emit readyChanged();
+        if (_firebaseApp != nullptr) {
+            _ready = true;
+            qDebug() << self << "::requestInit" << "initialized";
+            emit readyChanged();
+        } else {
+            qWarning() << "Failed to initialize firebase";
+        }
     }
 }
 
