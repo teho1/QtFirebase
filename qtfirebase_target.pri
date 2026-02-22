@@ -1,6 +1,6 @@
 message("QtFirebase: configuring build for supported Firebase target platform...")
 
-isEmpty(QTFIREBASE_SDK_PATH) {
+isEmpty(QTFIREBASE_SDK_PATH){
     QTFIREBASE_SDK_PATH = $$PWD/firebase_cpp_sdk
     message("No QTFIREBASE_SDK_PATH path set. Using default (firebase_cpp_sdk) $$QTFIREBASE_SDK_PATH")
 } else {
@@ -63,20 +63,15 @@ android: {
     # gnustl:   GNU STL
     # stlport:  STLPort runtime
     android-clang {
-        QTFIREBASE_STL_VARIANT = c++
+        #QTFIREBASE_STL_VARIANT =
     }
 
     isEmpty(QTFIREBASE_STL_VARIANT){
-        QTFIREBASE_STL_VARIANT = gnustl
+        #QTFIREBASE_STL_VARIANT = gnustl
     }
 
-    # Firebase C++ SDK 9.0.0
-    exists($$QTFIREBASE_SDK_PATH/libs/android/$$ANDROID_TARGET_ARCH/$$QTFIREBASE_STL_VARIANT) {
-        message("Using QTFIREBASE_STL_VARIANT ($$QTFIREBASE_STL_VARIANT)")
-        QTFIREBASE_SDK_LIBS_PATH = $$QTFIREBASE_SDK_PATH/libs/android/$$ANDROID_TARGET_ARCH/$$QTFIREBASE_STL_VARIANT
-    } else {
-        QTFIREBASE_SDK_LIBS_PATH = $$QTFIREBASE_SDK_PATH/libs/android/$$ANDROID_TARGET_ARCH
-    }
+    message("Using QTFIREBASE_STL_VARIANT ($$QTFIREBASE_STL_VARIANT)")
+    QTFIREBASE_SDK_LIBS_PATH = $$QTFIREBASE_SDK_PATH/libs/android/$$ANDROID_TARGET_ARCH/$$QTFIREBASE_STL_VARIANT
 
     DEPENDPATH += $$QTFIREBASE_SDK_LIBS_PATH
 }
@@ -141,39 +136,6 @@ ios: {
         $$PWD/src \
         $$PWD/src/ios \
         \
-
-    defineTest(includeFirebaseFramework) {
-        catalog = $$1
-        framework = $$2
-
-        FW_PATH = $$QTFIREBASE_FRAMEWORKS_ROOT/$${catalog}/$${framework}.xcframework
-        FW_PATH_ARM64_ARMV7 = $$FW_PATH/ios-arm64_armv7
-        FW_PATH_ARM64 = $$FW_PATH/ios-arm64
-        FW_PATH =
-        exists($$FW_PATH_ARM64): FW_PATH = $$FW_PATH_ARM64
-        exists($$FW_PATH_ARM64_ARMV7): FW_PATH = $$FW_PATH_ARM64_ARMV7
-
-        isEmpty(FW_PATH) {
-            return (false)
-        }
-        LIBS += -F$$FW_PATH -framework $$framework
-        export(LIBS)
-        return (true)
-    }
-}
-
-# Desktop platforms
-linux:!android {
-    contains(QMAKE_TARGET.arch, x86_64) {
-        QTFIREBASE_LINUX_ARCH = x86_64
-    } else {
-        QTFIREBASE_LINUX_ARCH = i386
-    }
-    exists($$QTFIREBASE_SDK_PATH/libs/linux/$$QTFIREBASE_LINUX_ARCH/cxx11) {
-        QTFIREBASE_SDK_LIBS_PATH = $$QTFIREBASE_SDK_PATH/libs/linux/$$QTFIREBASE_LINUX_ARCH/cxx11
-    } else {
-        QTFIREBASE_SDK_LIBS_PATH = $$QTFIREBASE_SDK_PATH/libs/linux/$$QTFIREBASE_LINUX_ARCH
-    }
 }
 
 # NOTE the order of linking is important!
@@ -186,9 +148,9 @@ contains(DEFINES,QTFIREBASE_BUILD_ADMOB) {
     message( "QtFirebase including AdMob" )
 
     ios: {
-        includeFirebaseFramework(Google-Mobile-Ads-SDK, GoogleMobileAds)
-
         LIBS += \
+            -F$$QTFIREBASE_FRAMEWORKS_ROOT/Google-Mobile-Ads-SDK/GoogleMobileAds.xcframework/$$IOS_BUILD_TARGET \
+            -framework GoogleMobileAds \
             -framework AdSupport \
             -framework StoreKit \
             \
@@ -223,8 +185,12 @@ contains(DEFINES,QTFIREBASE_BUILD_REMOTE_CONFIG) {
     message( "QtFirebase including RemoteConfig" )
 
     ios: {
-        includeFirebaseFramework(FirebaseRemoteConfig, FirebaseRemoteConfig)
-        includeFirebaseFramework(FirebaseRemoteConfig, FirebaseABTesting) # Required for Firebase iOS >= 4.5.0
+        LIBS += \
+            -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseRemoteConfig/FirebaseRemoteConfig.xcframework/$$IOS_BUILD_TARGET \
+            -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseRemoteConfig/FirebaseABTesting.xcframework/$$IOS_BUILD_TARGET \
+            -framework FirebaseABTesting \ # Required for Firebase iOS >= 4.5.0
+            -framework FirebaseRemoteConfig \
+            \
     }
 
     HEADERS += $$PWD/src/qtfirebaseremoteconfig.h
@@ -243,12 +209,24 @@ contains(DEFINES,QTFIREBASE_BUILD_MESSAGING) {
         message( "Remember to set QMAKE_IOS_DEPLOYMENT_TARGET in your .pro" )
         # Removed due to Qt 5.12 - see https://github.com/Larpon/QtFirebase/issues/106
         # QMAKE_IOS_DEPLOYMENT_TARGET = 10.0
+        message("path: " + $$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseMessaging/FirebaseInstanceID.xcframework/$$IOS_BUILD_TARGET)
+        exists($$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseMessaging/FirebaseInstanceID.xcframework) {
+            LIBS += \
+                -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseMessaging/FirebaseInstanceID.xcframework/$$IOS_BUILD_TARGET \
+                -framework FirebaseInstanceID \
+                \
+        }
 
-        includeFirebaseFramework(FirebaseMessaging, FirebaseInstanceID)
-        includeFirebaseFramework(FirebasePerformance, Protobuf)
-        includeFirebaseFramework(FirebaseMessaging, FirebaseMessaging)
+        exists($$QTFIREBASE_FRAMEWORKS_ROOT/FirebasePerformance/Protobuf.xcframework) {
+            LIBS += \
+                -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebasePerformance/Protobuf.xcframework/$$IOS_BUILD_TARGET \
+                -framework Protobuf \
+                \
+        }
 
         LIBS += \
+            -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseMessaging/FirebaseMessaging.xcframework/$$IOS_BUILD_TARGET \
+            -framework FirebaseMessaging \
             -framework UserNotifications \
             \
     }
@@ -267,19 +245,49 @@ contains(DEFINES,QTFIREBASE_BUILD_ANALYTICS) {
     ios: {
         # -framework FirebaseCoreDiagnostics \
         #-framework GoogleDataTransportCCTSupport \
-
-        includeFirebaseFramework(FirebaseAnalytics, FirebaseAnalytics)
-        includeFirebaseFramework(FirebaseAnalytics, FirebaseCore)
-        includeFirebaseFramework(FirebaseAnalytics, GoogleUtilities)
-        includeFirebaseFramework(FirebaseAnalytics, nanopb)
-        includeFirebaseFramework(FirebaseAnalytics, PromisesObjC)
-        includeFirebaseFramework(FirebaseAnalytics, FirebaseInstallations)
-        includeFirebaseFramework(FirebaseAnalytics, GoogleDataTransport)
-        includeFirebaseFramework(FirebaseAnalytics, GoogleAppMeasurement)
+        QMAKE_LFLAGS += -ObjC
 
         LIBS += \
-            -framework StoreKit \
-            \
+        -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseAnalytics/FirebaseAnalytics.xcframework/$$IOS_BUILD_TARGET \
+        -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseAnalytics/FirebaseCore.xcframework/$$IOS_BUILD_TARGET \
+        -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseAnalytics/FirebaseInstallations.xcframework/$$IOS_BUILD_TARGET \
+        \
+         -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseAnalytics/GoogleAppMeasurement.xcframework/$$IOS_BUILD_TARGET \
+         -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseAnalytics/FirebaseCoreInternal.xcframework/$$IOS_BUILD_TARGET \
+        -F$$QTFIREBASE_FRAMEWORKS_ROOT//FirebaseAnalytics/nanopb.xcframework/$$IOS_BUILD_TARGET \
+        -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseAnalytics/GoogleUtilities.xcframework/$$IOS_BUILD_TARGET \
+         -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseFunctions/FirebaseCoreExtension.xcframework/$$IOS_BUILD_TARGET \
+         -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseFunctions/GTMSessionFetcher.xcframework/$$IOS_BUILD_TARGET \
+         -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseFunctions/FirebaseFunctions.xcframework/$$IOS_BUILD_TARGET \
+          -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebasePerformance/FirebaseABTesting.xcframework/$$IOS_BUILD_TARGET \
+          -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebasePerformance/FirebaseSessions.xcframework/$$IOS_BUILD_TARGET \
+          -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebasePerformance/GoogleDataTransport.xcframework/$$IOS_BUILD_TARGET \
+        -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebasePerformance/FirebasePerformance.xcframework/$$IOS_BUILD_TARGET \
+         -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebasePerformance/FirebaseRemoteConfig.xcframework/$$IOS_BUILD_TARGET \
+         -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebasePerformance/FirebaseRemoteConfigInterop.xcframework/$$IOS_BUILD_TARGET \
+         -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebasePerformance/Promises.xcframework/$$IOS_BUILD_TARGET \
+         -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebasePerformance/FirebaseSharedSwift.xcframework/$$IOS_BUILD_TARGET \
+        -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseAnalytics/FBLPromises.xcframework/$$IOS_BUILD_TARGET \
+        -framework FirebaseAnalytics \
+        -framework FirebaseInstallations \
+        -framework FBLPromises \
+        -framework FirebaseCore \
+        -framework FirebaseCoreInternal \
+        -framework nanopb \
+         -framework GoogleDataTransport \
+         -framework GoogleAppMeasurement \
+         -framework GoogleUtilities \
+         -framework FirebaseCoreExtension \
+         -framework GTMSessionFetcher \
+         -framework FirebaseFunctions \
+         -framework FirebaseABTesting \
+         -framework FirebaseSessions \
+         -framework FirebasePerformance \
+         -framework FirebaseRemoteConfig \
+         -framework FirebaseRemoteConfigInterop \
+         -framework Promises \
+         -framework FirebaseSharedSwift \
+         -ObjC
     }
 
     HEADERS += $$PWD/src/qtfirebaseanalytics.h
@@ -294,12 +302,13 @@ contains(DEFINES,QTFIREBASE_BUILD_AUTH) {
     message( "QtFirebase including Auth" )
 
     ios: {
-        includeFirebaseFramework(FirebaseAuth, FirebaseAuth)
-        includeFirebaseFramework(FirebaseAuth, GTMSessionFetcher)
-
         LIBS += \
+            -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseAuth/FirebaseAuth.xcframework/$$IOS_BUILD_TARGET \
+            -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseAuth/GTMSessionFetcher.xcframework/$$IOS_BUILD_TARGET \
+            -framework FirebaseAuth \
+            -framework GTMSessionFetcher \
             -framework SafariServices \ # Required for Firebase iOS >= 4.4.0
-            \
+        \
     }
 
     HEADERS += $$PWD/src/qtfirebaseauth.h
@@ -309,6 +318,7 @@ contains(DEFINES,QTFIREBASE_BUILD_AUTH) {
     LIBS += -L$$QTFIREBASE_SDK_LIBS_PATH -l$${QTFIREBASE_SDK_LIBS_PREFIX}auth
 }
 
+
 # Database
 contains(DEFINES,QTFIREBASE_BUILD_DATABASE) {
     message( "QtFirebase including Database" )
@@ -316,10 +326,11 @@ contains(DEFINES,QTFIREBASE_BUILD_DATABASE) {
     ios: {
         LIBS += \
             -licucore \
-            \
-
-        includeFirebaseFramework(FirebaseDatabase, FirebaseDatabase)
-        includeFirebaseFramework(FirebaseDatabase, leveldb-library)
+            -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseDatabase/FirebaseDatabase.xcframework/$$IOS_BUILD_TARGET \
+            -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseDatabase/leveldb-library.xcframework/$$IOS_BUILD_TARGET \
+            -framework FirebaseDatabase \
+            -framework leveldb-library \
+        \
     }
 
     HEADERS += $$PWD/src/qtfirebasedatabase.h
@@ -330,3 +341,4 @@ contains(DEFINES,QTFIREBASE_BUILD_DATABASE) {
 }
 
 LIBS += -L$$QTFIREBASE_SDK_LIBS_PATH -l$${QTFIREBASE_SDK_LIBS_PREFIX}app
+
