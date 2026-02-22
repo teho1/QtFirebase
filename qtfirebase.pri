@@ -8,6 +8,7 @@ exists(.git) {
 }
 
 !contains(QTFIREBASE_CONFIG,"noautoregister") {
+    message("auto register")
     DEFINES += QTFIREBASE_AUTO_REGISTER
     HEADERS += $$PWD/qtfirebase_register.h
     SOURCES += $$PWD/qtfirebase_register.cpp
@@ -44,11 +45,14 @@ DISTFILES += \
 
 # Currently supported Firebase targets
 android|ios {
-    include(qtfirebase_target.pri)
-} else {
-    contains(QTFIREBASE_CONFIG,"desktop") {
+#    !debug {
+        message("QtFirebase: Using TARGET version (Android/iOS + Release build)")
         include(qtfirebase_target.pri)
-    } else {
-        include(stub/qtfirebase_stub.pri)
-    }
+#    } else {
+#        message("QtFirebase: Using STUB version (Android/iOS + Debug build)")
+#        include(stub/qtfirebase_stub.pri)
+#    }
+} else {
+    message("QtFirebase: Using STUB version (Desktop platform)")
+    include(stub/qtfirebase_stub.pri)
 }

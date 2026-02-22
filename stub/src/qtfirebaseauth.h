@@ -4,6 +4,7 @@
 
 #ifdef QTFIREBASE_BUILD_AUTH
 #include "qtfirebase.h"
+
 #if defined(qFirebaseAuth)
 #undef qFirebaseAuth
 #endif

@@ -12,6 +12,8 @@ QTFIREBASE_SDK_LIBS_PREFIX = "firebase_"
 QML_IMPORT_PATH += $$PWD
 
 INCLUDEPATH += $$PWD
+#IOS_BUILD_TARGET = ios-arm64_i386_x86_64-simulator
+IOS_BUILD_TARGET = ios-arm64
 
 INCLUDEPATH += \
     $$QTFIREBASE_SDK_PATH/include \
@@ -54,7 +56,7 @@ android: {
     # https://github.com/firebase/quickstart-cpp/blob/e8c20f678a06a28ebb73132abcd79d93b27622d9/messaging/testapp/src/android/java/com/google/firebase/example/TestappNativeActivity.java
 
     message("QtFirebase Android base")
-    QT += androidextras gui-private
+    QT +=  gui-private
 
     # Specify the STL variant that is to be used in the app .pro file with the $$QTFIREBASE_STL_VARIANT variable
     # c++:      LLVM libc++ runtime
@@ -112,8 +114,9 @@ ios: {
         \
 
     OBJECTIVE_SOURCES += \
+        $$PWD/src/ios/FIROptions+TrackingIDCompatibility.mm \
         $$PWD/src/ios/platformutils.mm \
-        $$PWD/src/ios/AppDelegate.mm \
+        $$PWD/src/ios/appdelegate.mm \
         \
 
     LIBS += \
@@ -121,6 +124,7 @@ ios: {
         -lsqlite3 \
         -lz \
         -L$$QTFIREBASE_SDK_LIBS_PATH \
+        -L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos \
         -framework MediaPlayer \
         -framework CoreMotion \
         -framework CoreTelephony \

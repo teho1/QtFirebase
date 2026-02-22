@@ -14,7 +14,7 @@ QtFirebaseAdMobInterstitial::~QtFirebaseAdMobInterstitial()
         _interstitial->SetListener(nullptr);
         delete _interstitialAdListener;
 
-        qDebug() << this << "::~QtFirebaseAdMobInterstitial" << "Destroyed Interstitial";        
+        qDebug() << this << "::~QtFirebaseAdMobInterstitial" << "Destroyed Interstitial";
         delete _interstitial;
     }
 

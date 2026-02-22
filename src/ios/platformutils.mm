@@ -18,7 +18,7 @@ void* PlatformUtils::getNativeWindow()
     //UIView *view = (__bridge UIView *)reinterpret_cast<void *>(QGuiApplication::platformNativeInterface()->nativeResourceForWindow("uiview", window));
 
     //UIView* view = (__bridge UIView*)reinterpret_cast<void*>(window->winId());
-    //qDebug() << "Getting UIView" << view;
+    qDebug() << "Getting UIView" << view;
 
     return (__bridge void *)reinterpret_cast<UIView *>(view);
 
