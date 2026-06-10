@@ -113,7 +113,7 @@ void QtFirebaseAdMobBase::init()
     if(!_nativeUIElement && PlatformUtils::getNativeWindow()) {
         qDebug() << this << "::init" << "setting native ui element";
         _nativeUIElement = PlatformUtils::getNativeWindow();
-    }
+    }   
 
     if(!_ready && !_initializing) {
         _initializing = true;

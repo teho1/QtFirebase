@@ -94,16 +94,26 @@ void QtFirebaseAuth::registerUser(const QString &email, const QString &pass)
 
 void QtFirebaseAuth::deleteUser()
 {
-    if(running())
+    if (running()) {
+        qWarning() << "[FIREBASE AUTH] deleteUser: ignored — another auth action is in progress (running=false required)";
         return;
-    if (!signedIn())
+    }
+    if (!signedIn()) {
+        qWarning() << "[FIREBASE AUTH] deleteUser: failed — not signed in (sensitive op requires a current user)";
+        setAction(ActionDeleteUser);
+        setError(ErrorFailure, QStringLiteral("No signed-in Firebase user to delete"));
+        setComplete(false);
+        setComplete(true);
         return;
-
+    }
 
     setAction(ActionDeleteUser);
     clearError();
     setComplete(false);
 
+    qInfo() << "[FIREBASE AUTH] deleteUser: deleting current Firebase Auth user"
+            << "uid:" << QString::fromStdString(m_auth->current_user().uid())
+            << "email:" << QString::fromStdString(m_auth->current_user().email());
     firebase::Future<void> future = m_auth->current_user().Delete();
     qFirebase->addFuture(__QTFIREBASE_ID + QStringLiteral(".auth.deleteUser"), future);
 }
@@ -114,6 +124,7 @@ void QtFirebaseAuth::sendPasswordResetEmail(const QString &email)
         return;
 
     clearError();
+    setAction(ActionPasswordReset);
     setComplete(false);
     firebase::Future<void> future =
         m_auth->SendPasswordResetEmail(email.toUtf8().constData());
@@ -164,6 +175,7 @@ void QtFirebaseAuth::signOut()
     qInfo() << "[FIREBASE AUTH] signOut called";
     m_auth->SignOut();
     clearError();
+    setToken(QString());
     setComplete(false);
     setSignIn(false);
     setComplete(true);
@@ -352,9 +364,10 @@ void QtFirebaseAuth::onFutureEvent(QString eventId, firebase::FutureBase future)
         {
             qDebug() << this << "::onFutureEvent Verification email sent successfully";
         }
-        else if(eventId == __QTFIREBASE_ID + QStringLiteral(".auth.deleteUser"))
-        {
-            qDebug() << this << "::onFutureEvent Delete user successfully";
+        else if (eventId == __QTFIREBASE_ID + QStringLiteral(".auth.deleteUser")) {
+            // Parent branch already has future.error() == kAuthErrorNone.
+            qInfo() << "[FIREBASE AUTH] onFutureEvent: deleteUser succeeded; Firebase Auth user is deleted for this app.";
+            setToken(QString());
             setSignIn(false);
         }
         else if(eventId == __QTFIREBASE_ID + QStringLiteral(".auth.updateProfile"))
@@ -416,7 +429,9 @@ void QtFirebaseAuth::onFutureEvent(QString eventId, firebase::FutureBase future)
         }
         else if(eventId == __QTFIREBASE_ID + QStringLiteral(".auth.deleteUser"))
         {
-            qDebug() << this << "::onFutureEvent Delete user error" << future.error() << future.error_message();
+            qWarning() << "[FIREBASE AUTH] onFutureEvent: deleteUser failed"
+                       << future.error() << future.error_message()
+                       << "(Firebase may require recent login for this sensitive operation)";
         }
         else if(eventId == __QTFIREBASE_ID + QStringLiteral(".auth.updateProfile"))
         {
@@ -446,9 +461,14 @@ void QtFirebaseAuth::getToken() {
         const QString email = QString::fromStdString(m_auth->current_user().email());
         const QString uid = QString::fromStdString(m_auth->current_user().uid());
         qInfo() << "[FIREBASE AUTH] getToken: requesting token" << "uid:" << uid << "email:" << email;
-        m_auth->current_user().GetToken(false).OnCompletion([this](const firebase::Future<std::string>& result) {
+        m_auth->current_user().GetToken(false).OnCompletion([this, uid](const firebase::Future<std::string>& result) {
             if (result.status() == firebase::kFutureStatusComplete) {
                 if (result.error() == firebase::auth::kAuthErrorNone) {
+                    if (!m_auth || !m_auth->current_user().is_valid() ||
+                        QString::fromStdString(m_auth->current_user().uid()) != uid) {
+                        qInfo() << "[FIREBASE AUTH] getToken: ignoring token for stale signed-in user";
+                        return;
+                    }
                     std::string idToken = *result.result();
                     QString tokenStr = QString::fromStdString(idToken);
                     qInfo() << "[FIREBASE AUTH] getToken: token received (len:" << tokenStr.length() << ")";
@@ -525,36 +545,36 @@ void QtFirebaseAuth::updateUserProfile(const QString& displayName, const QString
         qWarning() << "[FIREBASE AUTH] updateUserProfile: Cannot update profile - no user signed in";
         return;
     }
-
+    
     if (running()) {
         qWarning() << "[FIREBASE AUTH] updateUserProfile: Already running, ignoring request";
         return;
     }
-
+    
     qDebug() << "[FIREBASE AUTH] updateUserProfile called - displayName:" << displayName << "phoneNumber:" << phoneNumber;
-
+    
     // Note: Phone number cannot be set via UserProfile update in Firebase Auth.
     // Phone numbers are only set through phone authentication flow.
     // The phone number parameter is kept for API consistency, but we only update displayName.
     // Phone number should be stored in Firestore instead.
-
+    
     setAction(ActionUpdateProfile);
     clearError();
     setComplete(false);
-
+    
     auth::User user = m_auth->current_user();
     auth::User::UserProfile profile;
-
+    
     if (!displayName.isEmpty()) {
         profile.display_name = displayName.toUtf8().constData();
     }
-
+    
     // Phone number cannot be updated via UserProfile - it requires phone authentication
     // We'll store it in Firestore instead (which is already done in createEmployee)
     if (!phoneNumber.isEmpty()) {
         qDebug() << "[FIREBASE AUTH] updateUserProfile: Phone number provided but cannot be set via UserProfile. It will be stored in Firestore.";
     }
-
+    
     firebase::Future<void> future = user.UpdateUserProfile(profile);
     qFirebase->addFuture(__QTFIREBASE_ID + QStringLiteral(".auth.updateProfile"), future);
     qDebug() << "[FIREBASE AUTH] updateUserProfile: Future added, waiting for result";

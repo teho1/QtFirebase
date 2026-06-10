@@ -15,6 +15,8 @@ class QtFirebaseAuth: public QObject
     Q_OBJECT
     Q_PROPERTY(bool running READ running NOTIFY runningChanged)
     Q_PROPERTY(bool signedIn READ signedIn NOTIFY signedInChanged)
+    Q_PROPERTY(QString token READ token NOTIFY tokenChanged)
+    Q_PROPERTY(int action READ action CONSTANT)
 public:
     static QtFirebaseAuth *instance()
     {
@@ -34,9 +36,12 @@ public:
 
     enum Action
     {
-        AuthActionRegister,
-        AuthActionSignIn,
-        AuthActionSignOut
+        ActionRegister,
+        ActionSignIn,
+        ActionSignOut,
+        ActionDeleteUser,
+        ActionUpdateProfile,
+        ActionPasswordReset
     };
     Q_ENUM(Action)
 
@@ -60,12 +65,16 @@ public slots:
     QString displayName() const{return QString();}
     bool emailVerified() const{return false;}
     QString photoUrl() const{return QString();}
+    QString phoneNumber() const{return QString();}
     QString uid() const{return QString();}
+    QString token() const{return QString();}
+    int action() const{return ActionSignIn;}
 signals:
     void signedInChanged();
     void runningChanged();
     void completed(bool success, int actionId);
     void passwordResetEmailSent();
+    void tokenChanged();
 
 protected:
     static QtFirebaseAuth *self;

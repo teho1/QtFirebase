@@ -89,7 +89,7 @@ void registerQtFirebase() {
 #if defined(QTFIREBASE_BUILD_ALL) || defined(QTFIREBASE_BUILD_MESSAGING)
     qmlRegisterType<QtFirebaseMessaging>("QtFirebase", 1, 0, "Messaging");
 #endif
-
+    
 #if defined(QTFIREBASE_BUILD_ALL) || defined(QTFIREBASE_BUILD_ADMOB)
     qmlRegisterType<QtFirebaseAdMob>("QtFirebase", 1, 0, "AdMob");
     qmlRegisterType<QtFirebaseAdMobRequest>("QtFirebase", 1, 0, "AdMobRequest");
@@ -111,6 +111,20 @@ void registerQtFirebase() {
     qmlRegisterUncreatableType<QtFirebaseDatabaseQuery>("QtFirebase", 1, 0, "DatabaseQuery", "Get query object from DatabaseRequest, do not create it");
     qmlRegisterType<QtFirebaseDatabaseRequest>("QtFirebase", 1, 0, "DatabaseRequest");
     qmlRegisterUncreatableType<QtFirebaseDataSnapshot>("QtFirebase", 1, 0, "DataSnapshot", "Get snapshot object from DatabaseRequest, do not create it");
+#endif
+}
+
+// Expose the QtFirebaseAuth singleton as a plain QObject* so non-QtFirebase-
+// aware translation units (e.g. the privateProject static library) can wire it
+// into Qt signal/slot connections without pulling in QtFirebase headers or
+// compile defines. Resolved at final link time against the main executable
+// that owns the QtFirebase sources.
+QObject *qtFirebaseAuthObject()
+{
+#if defined(QTFIREBASE_BUILD_ALL) || defined(QTFIREBASE_BUILD_AUTH)
+    return QtFirebaseAuth::instance();
+#else
+    return nullptr;
 #endif
 }
 

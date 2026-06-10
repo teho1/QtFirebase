@@ -7,8 +7,6 @@ INCLUDEPATH += $$QTFIREBASE_STUB_PATH
 
 QML_IMPORT_PATH += $$PWD
 
-INCLUDEPATH += $$PWD/..
-
 HEADERS += \
     $$QTFIREBASE_STUB_PATH/src/qtfirebase.h \
     $$QTFIREBASE_STUB_PATH/src/qtfirebaseservice.h \

@@ -45,7 +45,8 @@ public:
         ActionSignIn,
         ActionSignOut,
         ActionDeleteUser,
-        ActionUpdateProfile
+        ActionUpdateProfile,
+        ActionPasswordReset
     };
     Q_ENUM(Action)
 
@@ -81,7 +82,7 @@ public slots:
     bool emailVerified() const;
     QString photoUrl() const;
     QString uid() const;
-
+    
     //Profile update
     void updateUserProfile(const QString& displayName, const QString& phoneNumber);
 

@@ -8,6 +8,10 @@ CONFIG += qt plugin c++11
 
 QML_IMPORT_PATH = $$PWD
 
+#QTFIREBASE_SDK_PATH  = $$PWD/firebase_cpp_sdk
+#QTFIREBASE_CONFIG += auth
+
+
 TARGET = $$qtLibraryTarget($$TARGET)
 uri = QtFirebase
 

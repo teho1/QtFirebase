@@ -109,7 +109,6 @@ ios: {
         \
 
     OBJECTIVE_SOURCES += \
-        $$PWD/src/ios/FIROptions+TrackingIDCompatibility.mm \
         $$PWD/src/ios/platformutils.mm \
         $$PWD/src/ios/appdelegate.mm \
         \
@@ -251,7 +250,7 @@ contains(DEFINES,QTFIREBASE_BUILD_ANALYTICS) {
         -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseAnalytics/FirebaseAnalytics.xcframework/$$IOS_BUILD_TARGET \
         -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseAnalytics/FirebaseCore.xcframework/$$IOS_BUILD_TARGET \
         -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseAnalytics/FirebaseInstallations.xcframework/$$IOS_BUILD_TARGET \
-        \
+        -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseAnalytics/FirebaseCoreDiagnostics.xcframework/$$IOS_BUILD_TARGET \
          -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseAnalytics/GoogleAppMeasurement.xcframework/$$IOS_BUILD_TARGET \
          -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseAnalytics/FirebaseCoreInternal.xcframework/$$IOS_BUILD_TARGET \
         -F$$QTFIREBASE_FRAMEWORKS_ROOT//FirebaseAnalytics/nanopb.xcframework/$$IOS_BUILD_TARGET \
@@ -302,7 +301,7 @@ contains(DEFINES,QTFIREBASE_BUILD_AUTH) {
     message( "QtFirebase including Auth" )
 
     ios: {
-        LIBS += \
+        LIBS += \            
             -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseAuth/FirebaseAuth.xcframework/$$IOS_BUILD_TARGET \
             -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseAuth/GTMSessionFetcher.xcframework/$$IOS_BUILD_TARGET \
             -framework FirebaseAuth \
@@ -325,7 +324,7 @@ contains(DEFINES,QTFIREBASE_BUILD_DATABASE) {
 
     ios: {
         LIBS += \
-            -licucore \
+            -licucore \            
             -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseDatabase/FirebaseDatabase.xcframework/$$IOS_BUILD_TARGET \
             -F$$QTFIREBASE_FRAMEWORKS_ROOT/FirebaseDatabase/leveldb-library.xcframework/$$IOS_BUILD_TARGET \
             -framework FirebaseDatabase \

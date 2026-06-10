@@ -2,9 +2,7 @@
 
 #include <QMutableMapIterator>
 #include <QThread>
-#if defined(Q_OS_ANDROID)
 #include "androidextras.h"
-#endif
 
 QtFirebase *QtFirebase::self = nullptr;
 
