@@ -393,7 +393,6 @@ QString QtFirebaseAuth::localizedErrorMessage(int errorId) const
     case auth::kAuthErrorProviderAlreadyLinked:
         return QStringLiteral("Google on jo linkitetty tähän tiliin.");
     case auth::kAuthErrorCancelled:
-    case auth::kAuthErrorUserCancelled:
         return QStringLiteral("Google-kirjautuminen peruutettiin.");
     case auth::kAuthErrorOperationNotAllowed:
         return QStringLiteral("Google-kirjautuminen ei ole käytössä. Ota se käyttöön Firebase Consolessa.");

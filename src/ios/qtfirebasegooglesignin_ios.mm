@@ -132,7 +132,7 @@ void requestSignIn(QtFirebaseAuth *auth, GoogleSignInCallback callback)
 bool handleOpenUrl(const QUrl &url)
 {
     configureGoogleSignInIfNeeded();
-    NSURL *nsUrl = [NSURL URLWithString:url.toNSString()];
+    NSURL *nsUrl = [NSURL URLWithString:url.toString().toNSString()];
     if (!nsUrl)
         return false;
     return [GIDSignIn.sharedInstance handleURL:nsUrl];
