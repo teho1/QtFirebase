@@ -3,6 +3,8 @@
 
 #include <functional>
 
+#include <QString>
+
 class QtFirebaseAuth;
 class QUrl;
 
