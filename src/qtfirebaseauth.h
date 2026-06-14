@@ -43,6 +43,10 @@ public:
     {
         ActionRegister,
         ActionSignIn,
+        ActionSignInWithGoogle,
+        ActionLinkWithGoogle,
+        ActionFetchSignInMethods,
+        ActionReauthenticate,
         ActionSignOut,
         ActionDeleteUser,
         ActionUpdateProfile,
@@ -60,6 +64,10 @@ public slots:
     //Control
     void registerUser(const QString& email, const QString& pass);
     void signIn(const QString& email, const QString& pass);
+    void signInWithGoogle();
+    void linkWithGoogle();
+    void reauthenticateWithGoogle();
+    void fetchSignInMethodsForEmail(const QString& email);
     void signOut();
     void sendPasswordResetEmail(const QString& email);
     void deleteUser();
@@ -80,6 +88,10 @@ public slots:
     QString displayName() const;
     QString phoneNumber() const;
     bool emailVerified() const;
+    bool isAuthVerified() const;
+    bool isGoogleUser() const;
+    QString providerId() const;
+    QString localizedErrorMessage(int errorId) const;
     QString photoUrl() const;
     QString uid() const;
     
@@ -93,6 +105,8 @@ signals:
     void passwordResetEmailSent();
     void tokenChanged();
     void actionChanged();
+    void signInMethodsFetched(const QStringList& methods);
+    void accountLinkRequired(const QString& email, const QStringList& existingMethods);
 
 protected:
     explicit QtFirebaseAuth(QObject *parent = nullptr);
@@ -109,6 +123,7 @@ private:
     void init() override;
     void onFutureEvent(QString eventId, firebase::FutureBase future) override;
     void getToken();
+    void completeGoogleSignInWithTokens(const QString& idToken, const QString& accessToken);
 
     // Keep Firebase auth listeners alive so we get callbacks on session restore / token refresh.
     class AuthStateListenerImpl;
@@ -126,6 +141,7 @@ private:
     QString m_errMsg;
     int m_action;
     QString m_token;
+    QString m_pendingGoogleIdToken;
     Q_DISABLE_COPY(QtFirebaseAuth)
 };
 

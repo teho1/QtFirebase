@@ -1,6 +1,31 @@
 #include "qtfirebaseauth.h"
+#include "qtfirebasegooglesignin.h"
+
+#include <QJsonDocument>
+#include <QJsonObject>
 
 namespace auth = ::firebase::auth;
+
+namespace {
+
+QString emailFromGoogleIdToken(const QString &idToken)
+{
+    const QStringList parts = idToken.split(QLatin1Char('.'));
+    if (parts.size() < 2)
+        return QString();
+
+    QByteArray payload = parts.at(1).toUtf8();
+    const int padding = payload.size() % 4;
+    if (padding > 0)
+        payload.append(QByteArray(4 - padding, '='));
+
+    const QJsonDocument doc = QJsonDocument::fromJson(QByteArray::fromBase64(payload));
+    if (!doc.isObject())
+        return QString();
+    return doc.object().value(QStringLiteral("email")).toString();
+}
+
+} // namespace
 
 QtFirebaseAuth *QtFirebaseAuth::self = nullptr;
 
@@ -162,6 +187,221 @@ void QtFirebaseAuth::signIn(const QString &email, const QString &pass)
 
     qFirebase->addFuture(__QTFIREBASE_ID + QStringLiteral(".auth.signin"), future);
     qDebug() << "[FIREBASE AUTH] signIn: Future added, waiting for result";
+}
+
+void QtFirebaseAuth::signInWithGoogle()
+{
+    qInfo() << "[FIREBASE AUTH] signInWithGoogle called";
+    if (running()) {
+        qInfo() << "[FIREBASE AUTH] signInWithGoogle: Already running, ignoring request";
+        return;
+    }
+
+    setAction(ActionSignInWithGoogle);
+    clearError();
+    setComplete(false);
+
+    if (signedIn()) {
+        qInfo() << "[FIREBASE AUTH] signInWithGoogle: Already signed in, signing out first";
+        signOut();
+    }
+
+    QtFirebaseGoogleSignIn::requestSignIn(this,
+        [this](bool success, const QString &idToken, const QString &accessToken, const QString &errorMessage) {
+            if (!success) {
+                qWarning() << "[FIREBASE AUTH] signInWithGoogle native failed:" << errorMessage;
+                setError(ErrorFailure, errorMessage.isEmpty()
+                    ? localizedErrorMessage(auth::kAuthErrorFailure)
+                    : errorMessage);
+                setComplete(true);
+                return;
+            }
+            completeGoogleSignInWithTokens(idToken, accessToken);
+        });
+}
+
+void QtFirebaseAuth::linkWithGoogle()
+{
+    qInfo() << "[FIREBASE AUTH] linkWithGoogle called";
+    if (!signedIn()) {
+        setAction(ActionLinkWithGoogle);
+        setError(ErrorFailure, QStringLiteral("No signed-in Firebase user to link"));
+        setComplete(false);
+        setComplete(true);
+        return;
+    }
+    if (running())
+        return;
+
+    setAction(ActionLinkWithGoogle);
+    clearError();
+    setComplete(false);
+
+    QtFirebaseGoogleSignIn::requestSignIn(this,
+        [this](bool success, const QString &idToken, const QString &accessToken, const QString &errorMessage) {
+            if (!success) {
+                setError(ErrorFailure, errorMessage.isEmpty()
+                    ? localizedErrorMessage(auth::kAuthErrorFailure)
+                    : errorMessage);
+                setComplete(true);
+                return;
+            }
+            completeGoogleSignInWithTokens(idToken, accessToken);
+        });
+}
+
+void QtFirebaseAuth::reauthenticateWithGoogle()
+{
+    qInfo() << "[FIREBASE AUTH] reauthenticateWithGoogle called";
+    if (!signedIn()) {
+        setAction(ActionReauthenticate);
+        setError(ErrorFailure, QStringLiteral("No signed-in Firebase user to reauthenticate"));
+        setComplete(false);
+        setComplete(true);
+        return;
+    }
+    if (running())
+        return;
+
+    setAction(ActionReauthenticate);
+    clearError();
+    setComplete(false);
+
+    QtFirebaseGoogleSignIn::requestSignIn(this,
+        [this](bool success, const QString &idToken, const QString &accessToken, const QString &errorMessage) {
+            if (!success) {
+                setError(ErrorFailure, errorMessage.isEmpty()
+                    ? localizedErrorMessage(auth::kAuthErrorFailure)
+                    : errorMessage);
+                setComplete(true);
+                return;
+            }
+            completeGoogleSignInWithTokens(idToken, accessToken);
+        });
+}
+
+void QtFirebaseAuth::fetchSignInMethodsForEmail(const QString &email)
+{
+    if (running())
+        return;
+
+    setAction(ActionFetchSignInMethods);
+    clearError();
+    setComplete(false);
+
+    firebase::Future<auth::Auth::FetchProvidersResult> future =
+        m_auth->FetchProvidersForEmail(email.toUtf8().constData());
+    qFirebase->addFuture(__QTFIREBASE_ID + QStringLiteral(".auth.fetchproviders"), future);
+}
+
+void QtFirebaseAuth::completeGoogleSignInWithTokens(const QString &idToken, const QString &accessToken)
+{
+    m_pendingGoogleIdToken = idToken;
+
+    const QByteArray idTokenUtf8 = idToken.toUtf8();
+    const QByteArray accessTokenUtf8 = accessToken.toUtf8();
+    const char *accessTokenCStr = accessTokenUtf8.isEmpty() ? nullptr : accessTokenUtf8.constData();
+
+    auth::Credential credential =
+        auth::GoogleAuthProvider::GetCredential(idTokenUtf8.constData(), accessTokenCStr);
+
+    if (!credential.is_valid()) {
+        setError(auth::kAuthErrorInvalidCredential, localizedErrorMessage(auth::kAuthErrorInvalidCredential));
+        setComplete(true);
+        return;
+    }
+
+    if (m_action == ActionReauthenticate) {
+        firebase::Future<auth::AuthResult> future =
+            m_auth->current_user().ReauthenticateAndRetrieveData(credential);
+        qFirebase->addFuture(__QTFIREBASE_ID + QStringLiteral(".auth.reauth.google"), future);
+        return;
+    }
+
+    if (m_action == ActionLinkWithGoogle) {
+        firebase::Future<auth::AuthResult> future = m_auth->current_user().LinkWithCredential(credential);
+        qFirebase->addFuture(__QTFIREBASE_ID + QStringLiteral(".auth.link.google"), future);
+        return;
+    }
+
+    firebase::Future<auth::AuthResult> future = m_auth->SignInAndRetrieveDataWithCredential(credential);
+    qFirebase->addFuture(__QTFIREBASE_ID + QStringLiteral(".auth.signin.google"), future);
+}
+
+bool QtFirebaseAuth::isAuthVerified() const
+{
+    if (!signedIn())
+        return false;
+    if (isGoogleUser())
+        return true;
+    return emailVerified();
+}
+
+bool QtFirebaseAuth::isGoogleUser() const
+{
+    if (!signedIn() || !m_auth)
+        return false;
+
+    const std::vector<auth::UserInfoInterface> providers = m_auth->current_user().provider_data();
+    for (const auth::UserInfoInterface &provider : providers) {
+        if (provider.provider_id() == auth::GoogleAuthProvider::kProviderId)
+            return true;
+    }
+    return false;
+}
+
+QString QtFirebaseAuth::providerId() const
+{
+    if (!signedIn() || !m_auth)
+        return QString();
+
+    const std::vector<auth::UserInfoInterface> providers = m_auth->current_user().provider_data();
+    for (const auth::UserInfoInterface &provider : providers) {
+        const std::string id = provider.provider_id();
+        if (!id.empty())
+            return QString::fromStdString(id);
+    }
+    return QString();
+}
+
+QString QtFirebaseAuth::localizedErrorMessage(int errorId) const
+{
+    switch (static_cast<auth::AuthError>(errorId)) {
+    case auth::kAuthErrorNone:
+        return QString();
+    case auth::kAuthErrorAccountExistsWithDifferentCredentials:
+        return QStringLiteral("Tällä sähköpostilla on jo tili toisella kirjautumistavalla. "
+                              "Kirjaudu ensin salasanalla ja linkitä Google-tili sen jälkeen.");
+    case auth::kAuthErrorEmailAlreadyInUse:
+        return QStringLiteral("Sähköpostiosoite on jo käytössä.");
+    case auth::kAuthErrorInvalidEmail:
+        return QStringLiteral("Sähköpostiosoite on virheellinen.");
+    case auth::kAuthErrorWrongPassword:
+        return QStringLiteral("Virheellinen salasana.");
+    case auth::kAuthErrorUserNotFound:
+        return QStringLiteral("Käyttäjää ei löytynyt.");
+    case auth::kAuthErrorUserDisabled:
+        return QStringLiteral("Käyttäjätili on poistettu käytöstä.");
+    case auth::kAuthErrorTooManyRequests:
+        return QStringLiteral("Liian monta yritystä. Yritä myöhemmin uudelleen.");
+    case auth::kAuthErrorNetworkRequestFailed:
+        return QStringLiteral("Verkkovirhe. Tarkista yhteys ja yritä uudelleen.");
+    case auth::kAuthErrorRequiresRecentLogin:
+        return QStringLiteral("Toiminto vaatii uuden kirjautumisen.");
+    case auth::kAuthErrorCredentialAlreadyInUse:
+        return QStringLiteral("Google-tili on jo linkitetty toiseen käyttäjään.");
+    case auth::kAuthErrorProviderAlreadyLinked:
+        return QStringLiteral("Google on jo linkitetty tähän tiliin.");
+    case auth::kAuthErrorCancelled:
+    case auth::kAuthErrorUserCancelled:
+        return QStringLiteral("Google-kirjautuminen peruutettiin.");
+    case auth::kAuthErrorOperationNotAllowed:
+        return QStringLiteral("Google-kirjautuminen ei ole käytössä. Ota se käyttöön Firebase Consolessa.");
+    default:
+        if (!errorMsg().isEmpty())
+            return errorMsg();
+        return QStringLiteral("Google-kirjautuminen epäonnistui.");
+    }
 }
 
 bool QtFirebaseAuth::running() const
@@ -380,7 +620,7 @@ void QtFirebaseAuth::onFutureEvent(QString eventId, firebase::FutureBase future)
             emit passwordResetEmailSent();
             qDebug() << this << "::onFutureEvent reset email sent successfully";
         }
-        if (eventId == __QTFIREBASE_ID + QStringLiteral(".auth.signin")) {
+        else if(eventId == __QTFIREBASE_ID + QStringLiteral(".auth.signin")) {
             qDebug() << "[FIREBASE AUTH] onFutureEvent: Sign in completed";
             if (future.error() == firebase::auth::kAuthErrorNone) {
                 const firebase::auth::AuthResult* result = reinterpret_cast<const firebase::auth::AuthResult*>(future.result_void());
@@ -403,6 +643,38 @@ void QtFirebaseAuth::onFutureEvent(QString eventId, firebase::FutureBase future)
                 setComplete(true);
             }
         }
+        else if (eventId == __QTFIREBASE_ID + QStringLiteral(".auth.signin.google")
+                 || eventId == __QTFIREBASE_ID + QStringLiteral(".auth.link.google")
+                 || eventId == __QTFIREBASE_ID + QStringLiteral(".auth.reauth.google")) {
+            const firebase::auth::AuthResult *result =
+                reinterpret_cast<const firebase::auth::AuthResult *>(future.result_void());
+            if (future.error() == firebase::auth::kAuthErrorNone && result != nullptr && result->user.is_valid()) {
+                qInfo() << "[FIREBASE AUTH] Google auth operation succeeded for event:" << eventId;
+                m_pendingGoogleIdToken.clear();
+                setSignIn(true);
+                getToken();
+            } else {
+                qWarning() << "[FIREBASE AUTH] Google auth operation failed:" << future.error()
+                           << future.error_message();
+                if (future.error() == auth::kAuthErrorAccountExistsWithDifferentCredentials
+                    && eventId == __QTFIREBASE_ID + QStringLiteral(".auth.signin.google")) {
+                    const QString email = emailFromGoogleIdToken(m_pendingGoogleIdToken);
+                    emit accountLinkRequired(email, QStringList());
+                }
+                setSignIn(eventId == __QTFIREBASE_ID + QStringLiteral(".auth.reauth.google") && signedIn());
+                setError(future.error(), localizedErrorMessage(future.error()));
+            }
+        }
+        else if (eventId == __QTFIREBASE_ID + QStringLiteral(".auth.fetchproviders")) {
+            const auth::Auth::FetchProvidersResult *result =
+                reinterpret_cast<const auth::Auth::FetchProvidersResult *>(future.result_void());
+            QStringList methods;
+            if (result != nullptr) {
+                for (const std::string &provider : result->providers)
+                    methods.append(QString::fromStdString(provider));
+            }
+            emit signInMethodsFetched(methods);
+        }
     }
     else
     {
@@ -422,6 +694,25 @@ void QtFirebaseAuth::onFutureEvent(QString eventId, firebase::FutureBase future)
             setSignIn(false);
             setError(ErrorFailure, QString::fromStdString(future.error_message()));
             setComplete(true);
+        }
+        else if (eventId == __QTFIREBASE_ID + QStringLiteral(".auth.signin.google")
+                 || eventId == __QTFIREBASE_ID + QStringLiteral(".auth.link.google")
+                 || eventId == __QTFIREBASE_ID + QStringLiteral(".auth.reauth.google")) {
+            qWarning() << "[FIREBASE AUTH] onFutureEvent: Google auth error:" << future.error()
+                       << future.error_message();
+            if (future.error() == auth::kAuthErrorAccountExistsWithDifferentCredentials
+                && eventId == __QTFIREBASE_ID + QStringLiteral(".auth.signin.google")) {
+                const QString email = emailFromGoogleIdToken(m_pendingGoogleIdToken);
+                emit accountLinkRequired(email, QStringList());
+            }
+            setSignIn(eventId == __QTFIREBASE_ID + QStringLiteral(".auth.reauth.google") && signedIn());
+            setError(future.error(), localizedErrorMessage(future.error()));
+        }
+        else if (eventId == __QTFIREBASE_ID + QStringLiteral(".auth.fetchproviders")) {
+            qWarning() << "[FIREBASE AUTH] onFutureEvent: fetch providers error:" << future.error()
+                       << future.error_message();
+            emit signInMethodsFetched(QStringList());
+            setError(future.error(), localizedErrorMessage(future.error()));
         }
         else if(eventId == __QTFIREBASE_ID + QStringLiteral(".auth.resetEmail"))
         {

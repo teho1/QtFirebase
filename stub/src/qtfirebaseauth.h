@@ -38,6 +38,10 @@ public:
     {
         ActionRegister,
         ActionSignIn,
+        ActionSignInWithGoogle,
+        ActionLinkWithGoogle,
+        ActionFetchSignInMethods,
+        ActionReauthenticate,
         ActionSignOut,
         ActionDeleteUser,
         ActionUpdateProfile,
@@ -50,6 +54,10 @@ public slots:
     //Control
     void registerUser(const QString& email, const QString& pass){ Q_UNUSED(email) Q_UNUSED(pass) }
     void signIn(const QString& email, const QString& pass){ Q_UNUSED(email) Q_UNUSED(pass) }
+    void signInWithGoogle(){}
+    void linkWithGoogle(){}
+    void reauthenticateWithGoogle(){}
+    void fetchSignInMethodsForEmail(const QString& email){ Q_UNUSED(email) }
     void signOut(){}
     void sendPasswordResetEmail(const QString& email){ Q_UNUSED(email) }
     void deleteUser(){}
@@ -64,17 +72,28 @@ public slots:
     QString email() const{return QString();}
     QString displayName() const{return QString();}
     bool emailVerified() const{return false;}
+    bool isAuthVerified() const{return false;}
+    bool isGoogleUser() const{return false;}
+    QString providerId() const{return QString();}
+    QString localizedErrorMessage(int errorId) const { Q_UNUSED(errorId) return QString(); }
     QString photoUrl() const{return QString();}
     QString phoneNumber() const{return QString();}
     QString uid() const{return QString();}
     QString token() const{return QString();}
     int action() const{return ActionSignIn;}
+    void updateUserProfile(const QString& displayName, const QString& phoneNumber)
+    {
+        Q_UNUSED(displayName)
+        Q_UNUSED(phoneNumber)
+    }
 signals:
     void signedInChanged();
     void runningChanged();
     void completed(bool success, int actionId);
     void passwordResetEmailSent();
     void tokenChanged();
+    void signInMethodsFetched(const QStringList& methods);
+    void accountLinkRequired(const QString& email, const QStringList& existingMethods);
 
 protected:
     static QtFirebaseAuth *self;

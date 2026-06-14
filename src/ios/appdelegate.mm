@@ -22,7 +22,10 @@
 // vendored framework headers directly for now.
 #import "../../../../../extensions/ios/Firebase/FirebaseAnalytics/FirebaseCore.xcframework/ios-arm64/FirebaseCore.framework/Headers/FirebaseCore.h"
 #import "../../../../../extensions/ios/Firebase/FirebaseMessaging/FirebaseMessaging.xcframework/ios-arm64/FirebaseMessaging.framework/Headers/FirebaseMessaging.h"
+#import <GoogleSignIn/GoogleSignIn.h>
 #import <UserNotifications/UserNotifications.h>
+#include "qtfirebasegooglesignin.h"
+#include <QUrl>
 
 @interface QIOSApplicationDelegate : UIResponder <UIApplicationDelegate, UNUserNotificationCenterDelegate>
 @end
@@ -61,6 +64,14 @@
                           }];*/
 
     return YES;
+}
+
+- (BOOL)application:(UIApplication *)app openURL:(NSURL *)url options:(NSDictionary<UIApplicationOpenURLOptionsKey,id> *)options
+{
+    Q_UNUSED(options)
+    if (!url)
+        return NO;
+    return QtFirebaseGoogleSignIn::handleOpenUrl(QUrl(QString::fromNSString(url.absoluteString)));
 }
 
 - (void)application:(UIApplication *)application didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)deviceToken {
