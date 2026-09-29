@@ -61,6 +61,7 @@ public slots:
     void signOut(){}
     void sendPasswordResetEmail(const QString& email){ Q_UNUSED(email) }
     void deleteUser(){}
+    void refreshToken(){}
 
     //Status
     bool signedIn() const{return false;}

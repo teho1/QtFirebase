@@ -746,12 +746,18 @@ void QtFirebaseAuth::setToken(const QString &newToken)
     emit tokenChanged();
 }
 
-void QtFirebaseAuth::getToken() {
+void QtFirebaseAuth::refreshToken()
+{
+    qInfo() << "[FIREBASE AUTH] refreshToken: forcing fresh ID token";
+    getToken(true);
+}
+
+void QtFirebaseAuth::getToken(bool forceRefresh) {
     if (m_auth && m_auth->current_user().is_valid()) {
         const QString email = QString::fromStdString(m_auth->current_user().email());
         const QString uid = QString::fromStdString(m_auth->current_user().uid());
-        qInfo() << "[FIREBASE AUTH] getToken: requesting token" << "uid:" << uid << "email:" << email;
-        m_auth->current_user().GetToken(false).OnCompletion([this, uid](const firebase::Future<std::string>& result) {
+        qInfo() << "[FIREBASE AUTH] getToken: requesting token" << "uid:" << uid << "email:" << email << "forceRefresh:" << forceRefresh;
+        m_auth->current_user().GetToken(forceRefresh).OnCompletion([this, uid](const firebase::Future<std::string>& result) {
             if (result.status() == firebase::kFutureStatusComplete) {
                 if (result.error() == firebase::auth::kAuthErrorNone) {
                     if (!m_auth || !m_auth->current_user().is_valid() ||

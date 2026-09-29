@@ -71,6 +71,9 @@ public slots:
     void signOut();
     void sendPasswordResetEmail(const QString& email);
     void deleteUser();
+    // Forces a fresh ID token from Firebase (bypassing the local cache) and
+    // emits tokenChanged() once it arrives. Used to recover from transient 401s.
+    void refreshToken();
     void addAuthStateListener(firebase::auth::AuthStateListener* listener);
     void removeAuthStateListener(firebase::auth::AuthStateListener* listener);
     void addIdTokenListener(firebase::auth::IdTokenListener* listener);
@@ -122,7 +125,7 @@ private:
     void setError(int errId, const QString& errMsg = QString());
     void init() override;
     void onFutureEvent(QString eventId, firebase::FutureBase future) override;
-    void getToken();
+    void getToken(bool forceRefresh = false);
     void completeGoogleSignInWithTokens(const QString& idToken, const QString& accessToken);
 
     // Keep Firebase auth listeners alive so we get callbacks on session restore / token refresh.

@@ -76,6 +76,12 @@ void QtFirebaseMessaging::init()
     }
 
     if(!_ready && !_initializing) {
+        // Screenshot captures cannot dismiss the iOS notification prompt.
+        // Skip messaging setup so requestAuthorization is never called.
+        if (qEnvironmentVariableIsSet("RH_SCREENSHOT")) {
+            qInfo() << self << "::init skipped for screenshot capture";
+            return;
+        }
         _initializing = true;
 
         auto initResult = messaging::Initialize(*qFirebase->firebaseApp(), g_listener);
