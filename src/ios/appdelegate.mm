@@ -25,7 +25,6 @@
 #import <GoogleSignIn/GoogleSignIn.h>
 #import <UserNotifications/UserNotifications.h>
 #include "qtfirebasegooglesignin.h"
-#include <QDesktopServices>
 #include <QUrl>
 
 @interface QIOSApplicationDelegate : UIResponder <UIApplicationDelegate, UNUserNotificationCenterDelegate>
@@ -72,12 +71,7 @@
     Q_UNUSED(options)
     if (!url)
         return NO;
-    const QUrl qurl(QString::fromNSString(url.absoluteString));
-    // Google Sign-In owns its reversed-client-id scheme. Demo URLs must reach
-    // QDesktopServices so the screenshot session can start.
-    if (qurl.scheme() == QLatin1String("righthere"))
-        return QDesktopServices::openUrl(qurl);
-    return QtFirebaseGoogleSignIn::handleOpenUrl(qurl);
+    return QtFirebaseGoogleSignIn::handleOpenUrl(QUrl(QString::fromNSString(url.absoluteString)));
 }
 
 - (void)application:(UIApplication *)application didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)deviceToken {
