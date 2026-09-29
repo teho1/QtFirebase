@@ -123,7 +123,6 @@ private:
     void init() override;
     void onFutureEvent(QString eventId, firebase::FutureBase future) override;
     void getToken();
-    void sendVerificationEmail(firebase::auth::User user);
     void completeGoogleSignInWithTokens(const QString& idToken, const QString& accessToken);
 
     // Keep Firebase auth listeners alive so we get callbacks on session restore / token refresh.
@@ -149,5 +148,7 @@ private:
 #endif //QTFIREBASE_BUILD_AUTH
 
 #endif // QTFIREBASE_AUTH_H
+
+
 
 

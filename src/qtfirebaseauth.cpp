@@ -3,28 +3,10 @@
 
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QLocale>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
-#include <QNetworkRequest>
-#include <QUrl>
-#include <functional>
 
 namespace auth = ::firebase::auth;
 
 namespace {
-
-void applyEmailLanguage(auth::Auth *firebaseAuth)
-{
-    if (!firebaseAuth)
-        return;
-
-    // Firebase localizes verification and password-reset emails from the Auth
-    // instance's BCP 47 language code. QLocale() follows the locale currently
-    // selected by the app, falling back to the device locale at startup.
-    const QByteArray languageCode = QLocale().bcp47Name().toUtf8();
-    firebaseAuth->set_language_code(languageCode.constData());
-}
 
 QString emailFromGoogleIdToken(const QString &idToken)
 {
@@ -41,38 +23,6 @@ QString emailFromGoogleIdToken(const QString &idToken)
     if (!doc.isObject())
         return QString();
     return doc.object().value(QStringLiteral("email")).toString();
-}
-
-using EmailRequestCallback = std::function<void(bool, const QString &)>;
-
-void postAuthEmailRequest(QObject *owner,
-                          const QUrl &url,
-                          const QJsonObject &body,
-                          const QString &bearerToken,
-                          EmailRequestCallback callback)
-{
-    auto *manager = new QNetworkAccessManager(owner);
-    QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
-    if (!bearerToken.isEmpty())
-        request.setRawHeader("Authorization", "Bearer " + bearerToken.toUtf8());
-
-    QNetworkReply *reply = manager->post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
-    QObject::connect(reply, &QNetworkReply::finished, owner, [reply, manager, callback = std::move(callback)]() {
-        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        const QByteArray responseBody = reply->readAll();
-        const bool success = reply->error() == QNetworkReply::NoError && status >= 200 && status < 300;
-        QString errorMessage;
-        if (!success) {
-            const QJsonDocument response = QJsonDocument::fromJson(responseBody);
-            errorMessage = response.object().value(QStringLiteral("error")).toString();
-            if (errorMessage.isEmpty())
-                errorMessage = reply->errorString();
-        }
-        reply->deleteLater();
-        manager->deleteLater();
-        callback(success, errorMessage);
-    });
 }
 
 } // namespace
@@ -201,57 +151,9 @@ void QtFirebaseAuth::sendPasswordResetEmail(const QString &email)
     clearError();
     setAction(ActionPasswordReset);
     setComplete(false);
-    postAuthEmailRequest(
-        this,
-        QUrl(QStringLiteral("https://auth.righthere.fi/api/auth/password-reset")),
-        QJsonObject{
-            {QStringLiteral("email"), email.trimmed()},
-            {QStringLiteral("locale"), QLocale().bcp47Name()},
-        },
-        QString(),
-        [this](bool success, const QString &errorMessage) {
-            if (success) {
-                clearError();
-                emit passwordResetEmailSent();
-            } else {
-                setError(ErrorFailure, errorMessage.isEmpty()
-                    ? QStringLiteral("Unable to send password reset email")
-                    : errorMessage);
-            }
-            setComplete(true);
-        });
-}
-
-void QtFirebaseAuth::sendVerificationEmail(auth::User user)
-{
-    const QString uid = QString::fromStdString(user.uid());
-    user.GetToken(true).OnCompletion([this, uid](const firebase::Future<std::string> &result) {
-        if (result.status() != firebase::kFutureStatusComplete ||
-            result.error() != firebase::auth::kAuthErrorNone ||
-            !result.result()) {
-            qWarning() << "[FIREBASE AUTH] Unable to get token for verification email";
-            return;
-        }
-
-        const QString idToken = QString::fromStdString(*result.result());
-        QMetaObject::invokeMethod(this, [this, uid, idToken]() {
-            if (!m_auth || !m_auth->current_user().is_valid() ||
-                QString::fromStdString(m_auth->current_user().uid()) != uid) {
-                return;
-            }
-            postAuthEmailRequest(
-                this,
-                QUrl(QStringLiteral("https://auth.righthere.fi/api/auth/verification-email")),
-                QJsonObject{{QStringLiteral("locale"), QLocale().bcp47Name()}},
-                idToken,
-                [](bool success, const QString &errorMessage) {
-                    if (success)
-                        qInfo() << "[FIREBASE AUTH] Verification email sent through branded handler";
-                    else
-                        qWarning() << "[FIREBASE AUTH] Branded verification email failed:" << errorMessage;
-                });
-        }, Qt::QueuedConnection);
-    });
+    firebase::Future<void> future =
+        m_auth->SendPasswordResetEmail(email.toUtf8().constData());
+    qFirebase->addFuture(__QTFIREBASE_ID + QStringLiteral(".auth.resetEmail"), future);
 }
 
 
@@ -632,7 +534,6 @@ void QtFirebaseAuth::init()
     if(!ready() && !initializing()) {
         setInitializing(true);
         m_auth = auth::Auth::GetAuth(qFirebase->firebaseApp());
-        applyEmailLanguage(m_auth);
         qInfo() << "[FIREBASE AUTH] init: native auth initialized";
 
         if (m_auth && !m_listenersInstalled) {
@@ -683,7 +584,7 @@ void QtFirebaseAuth::onFutureEvent(QString eventId, firebase::FutureBase future)
                     auth::User user = result->user;
                     qDebug() << "[FIREBASE AUTH] User registered successfully. Email:" << QString::fromStdString(user.email()) << "UID:" << QString::fromStdString(user.uid());
                     qDebug() << "[FIREBASE AUTH] Sending email verification...";
-                    sendVerificationEmail(user);
+                    qFirebase->addFuture(__QTFIREBASE_ID + QStringLiteral(".auth.sendemailverify"), user.SendEmailVerification());
                     setSignIn(true);
                     qDebug() << "[FIREBASE AUTH] Getting authentication token after registration...";
                     getToken();
@@ -968,3 +869,5 @@ void QtFirebaseAuth::updateUserProfile(const QString& displayName, const QString
     qFirebase->addFuture(__QTFIREBASE_ID + QStringLiteral(".auth.updateProfile"), future);
     qDebug() << "[FIREBASE AUTH] updateUserProfile: Future added, waiting for result";
 }
+
+
