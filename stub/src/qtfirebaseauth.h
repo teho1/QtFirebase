@@ -45,7 +45,9 @@ public:
         ActionSignOut,
         ActionDeleteUser,
         ActionUpdateProfile,
-        ActionPasswordReset
+        ActionPasswordReset,
+        ActionSignInWithApple,
+        ActionLinkWithApple
     };
     Q_ENUM(Action)
 
@@ -57,6 +59,9 @@ public slots:
     void signInWithGoogle(){}
     void linkWithGoogle(){}
     void reauthenticateWithGoogle(){}
+    void signInWithApple(){}
+    void linkWithApple(){}
+    void reauthenticateWithApple(){}
     void fetchSignInMethodsForEmail(const QString& email){ Q_UNUSED(email) }
     void signOut(){}
     void sendPasswordResetEmail(const QString& email){ Q_UNUSED(email) }
@@ -75,6 +80,8 @@ public slots:
     bool emailVerified() const{return false;}
     bool isAuthVerified() const{return false;}
     bool isGoogleUser() const{return false;}
+    bool isAppleUser() const{return false;}
+    bool appleSignInAvailable() const{return false;}
     QString providerId() const{return QString();}
     QString localizedErrorMessage(int errorId) const { Q_UNUSED(errorId) return QString(); }
     QString photoUrl() const{return QString();}

@@ -50,7 +50,10 @@ public:
         ActionSignOut,
         ActionDeleteUser,
         ActionUpdateProfile,
-        ActionPasswordReset
+        ActionPasswordReset,
+        // Appended so existing numeric action ids stay stable.
+        ActionSignInWithApple,
+        ActionLinkWithApple
     };
     Q_ENUM(Action)
 
@@ -67,6 +70,9 @@ public slots:
     void signInWithGoogle();
     void linkWithGoogle();
     void reauthenticateWithGoogle();
+    void signInWithApple();
+    void linkWithApple();
+    void reauthenticateWithApple();
     void fetchSignInMethodsForEmail(const QString& email);
     void signOut();
     void sendPasswordResetEmail(const QString& email);
@@ -93,6 +99,8 @@ public slots:
     bool emailVerified() const;
     bool isAuthVerified() const;
     bool isGoogleUser() const;
+    bool isAppleUser() const;
+    bool appleSignInAvailable() const;
     QString providerId() const;
     QString localizedErrorMessage(int errorId) const;
     QString photoUrl() const;
@@ -127,6 +135,12 @@ private:
     void onFutureEvent(QString eventId, firebase::FutureBase future) override;
     void getToken(bool forceRefresh = false);
     void completeGoogleSignInWithTokens(const QString& idToken, const QString& accessToken);
+    void requestAppleSignIn();
+    void completeAppleSignIn(const QString& idToken, const QString& rawNonce);
+    void applyAppleFullNameIfMissing();
+    bool hasProvider(const char* providerId) const;
+    QString federatedProviderName() const;
+    void handleFederatedFailure(const QString& eventId, const firebase::FutureBase& future);
 
     // Keep Firebase auth listeners alive so we get callbacks on session restore / token refresh.
     class AuthStateListenerImpl;
@@ -145,6 +159,11 @@ private:
     int m_action;
     QString m_token;
     QString m_pendingGoogleIdToken;
+    QString m_pendingAppleIdToken;
+    QString m_pendingAppleEmail;
+    QString m_pendingAppleFullName;
+    // "Google" or "Apple": provider of the current federated action, used in error messages.
+    QString m_federatedProvider = QStringLiteral("Google");
     Q_DISABLE_COPY(QtFirebaseAuth)
 };
 
