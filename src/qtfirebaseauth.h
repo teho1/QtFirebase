@@ -144,7 +144,8 @@ private:
     QStringList providerIds() const;
     void deleteCurrentUser();
     QString federatedProviderName() const;
-    void handleFederatedFailure(const QString& eventId, const firebase::FutureBase& future);
+    void handleFederatedSuccess(const QString& eventId);
+    void handleFederatedFailure(const QString& eventId, int error);
 
     // Keep Firebase auth listeners alive so we get callbacks on session restore / token refresh.
     class AuthStateListenerImpl;

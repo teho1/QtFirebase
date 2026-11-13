@@ -489,32 +489,32 @@ void QtFirebaseAuth::completeAppleSignIn(const QString &idToken, const QString &
 {
     m_pendingAppleIdToken = idToken;
 
-    const QByteArray idTokenUtf8 = idToken.toUtf8();
-    const QByteArray rawNonceUtf8 = rawNonce.toUtf8();
-    auth::Credential credential = auth::OAuthProvider::GetCredential(
-        kAppleProviderId, idTokenUtf8.constData(), rawNonceUtf8.constData(), nullptr);
-
-    if (!credential.is_valid()) {
-        setError(auth::kAuthErrorInvalidCredential, localizedErrorMessage(auth::kAuthErrorInvalidCredential));
-        setComplete(true);
-        return;
-    }
-
+    // Not auth::OAuthProvider::GetCredential: on iOS it sends an empty
+    // access_token and Firebase rejects it ("Invalid OAuth response from apple.com").
+    QtFirebaseAppleSignIn::FirebaseOperation operation = QtFirebaseAppleSignIn::FirebaseOperation::SignIn;
+    QString eventId = __QTFIREBASE_ID + QStringLiteral(".auth.signin.apple");
     if (m_action == ActionReauthenticate) {
-        firebase::Future<auth::AuthResult> future =
-            m_auth->current_user().ReauthenticateAndRetrieveData(credential);
-        qFirebase->addFuture(__QTFIREBASE_ID + QStringLiteral(".auth.reauth.apple"), future);
-        return;
+        operation = QtFirebaseAppleSignIn::FirebaseOperation::Reauthenticate;
+        eventId = __QTFIREBASE_ID + QStringLiteral(".auth.reauth.apple");
+    } else if (m_action == ActionLinkWithApple) {
+        operation = QtFirebaseAppleSignIn::FirebaseOperation::Link;
+        eventId = __QTFIREBASE_ID + QStringLiteral(".auth.link.apple");
     }
 
-    if (m_action == ActionLinkWithApple) {
-        firebase::Future<auth::AuthResult> future = m_auth->current_user().LinkWithCredential(credential);
-        qFirebase->addFuture(__QTFIREBASE_ID + QStringLiteral(".auth.link.apple"), future);
-        return;
-    }
-
-    firebase::Future<auth::AuthResult> future = m_auth->SignInAndRetrieveDataWithCredential(credential);
-    qFirebase->addFuture(__QTFIREBASE_ID + QStringLiteral(".auth.signin.apple"), future);
+    QtFirebaseAppleSignIn::authenticateWithFirebase(this, operation, idToken, rawNonce,
+        [this, eventId](int authError, const QString &errorMessage) {
+            if (authError == auth::kAuthErrorNone) {
+                qInfo() << "[FIREBASE AUTH] Federated auth operation succeeded for event:" << eventId;
+                clearError();
+                handleFederatedSuccess(eventId);
+            } else {
+                qWarning() << "[FIREBASE AUTH] Apple Firebase auth failed:" << authError << errorMessage;
+                // Unmapped errors fall back to errorMsg() in localizedErrorMessage().
+                setError(authError, errorMessage);
+                handleFederatedFailure(eventId, authError);
+            }
+            setComplete(true);
+        });
 }
 
 void QtFirebaseAuth::applyAppleFullNameIfMissing()
@@ -897,19 +897,11 @@ void QtFirebaseAuth::onFutureEvent(QString eventId, firebase::FutureBase future)
                 reinterpret_cast<const firebase::auth::AuthResult *>(future.result_void());
             if (future.error() == firebase::auth::kAuthErrorNone && result != nullptr && result->user.is_valid()) {
                 qInfo() << "[FIREBASE AUTH] Federated auth operation succeeded for event:" << eventId;
-                if (isAppleEvent(eventId)) {
-                    applyAppleFullNameIfMissing();
-                    m_pendingAppleIdToken.clear();
-                    m_pendingAppleEmail.clear();
-                } else {
-                    m_pendingGoogleIdToken.clear();
-                }
-                setSignIn(true);
-                getToken();
+                handleFederatedSuccess(eventId);
             } else {
                 qWarning() << "[FIREBASE AUTH] Federated auth operation failed:" << future.error()
                            << future.error_message();
-                handleFederatedFailure(eventId, future);
+                handleFederatedFailure(eventId, future.error());
             }
         }
         else if (eventId == __QTFIREBASE_ID + QStringLiteral(".auth.fetchproviders")) {
@@ -945,7 +937,7 @@ void QtFirebaseAuth::onFutureEvent(QString eventId, firebase::FutureBase future)
         else if (isFederatedEvent(__QTFIREBASE_ID, eventId)) {
             qWarning() << "[FIREBASE AUTH] onFutureEvent: federated auth error:" << future.error()
                        << future.error_message();
-            handleFederatedFailure(eventId, future);
+            handleFederatedFailure(eventId, future.error());
         }
         else if (eventId == __QTFIREBASE_ID + QStringLiteral(".auth.fetchproviders")) {
             qWarning() << "[FIREBASE AUTH] onFutureEvent: fetch providers error:" << future.error()
@@ -972,9 +964,22 @@ void QtFirebaseAuth::onFutureEvent(QString eventId, firebase::FutureBase future)
     setComplete(true);
 }
 
-void QtFirebaseAuth::handleFederatedFailure(const QString &eventId, const firebase::FutureBase &future)
+void QtFirebaseAuth::handleFederatedSuccess(const QString &eventId)
 {
-    if (future.error() == auth::kAuthErrorAccountExistsWithDifferentCredentials && isFederatedSignInEvent(__QTFIREBASE_ID, eventId)) {
+    if (isAppleEvent(eventId)) {
+        applyAppleFullNameIfMissing();
+        m_pendingAppleIdToken.clear();
+        m_pendingAppleEmail.clear();
+    } else {
+        m_pendingGoogleIdToken.clear();
+    }
+    setSignIn(true);
+    getToken();
+}
+
+void QtFirebaseAuth::handleFederatedFailure(const QString &eventId, int error)
+{
+    if (error == auth::kAuthErrorAccountExistsWithDifferentCredentials && isFederatedSignInEvent(__QTFIREBASE_ID, eventId)) {
         QString email;
         if (isAppleEvent(eventId)) {
             // Apple sends the email only on first authorization; the identity token
@@ -991,7 +996,7 @@ void QtFirebaseAuth::handleFederatedFailure(const QString &eventId, const fireba
         m_pendingAppleFullName.clear();
     }
     setSignIn(isFederatedReauthEvent(__QTFIREBASE_ID, eventId) && signedIn());
-    setError(future.error(), localizedErrorMessage(future.error()));
+    setError(error, localizedErrorMessage(error));
 }
 
 QString QtFirebaseAuth::token() const
