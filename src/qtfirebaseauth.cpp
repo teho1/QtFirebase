@@ -1,6 +1,7 @@
 #include "qtfirebaseauth.h"
 #include "qtfirebasegooglesignin.h"
 #include "qtfirebaseapplesignin.h"
+#include "qtfirebaseauthhelpers.h"
 
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -134,7 +135,7 @@ void QtFirebaseAuth::setError(int errId, const QString &errMsg)
 
 void QtFirebaseAuth::registerUser(const QString &email, const QString &pass)
 {
-    qInfo() << "[FIREBASE AUTH] registerUser called for email:" << email;
+    qInfo() << "[FIREBASE AUTH] registerUser called for email:" << maskEmail(email);
     if(running())
     {
         qInfo() << "[FIREBASE AUTH] registerUser: Already running, ignoring request";
@@ -171,9 +172,39 @@ void QtFirebaseAuth::deleteUser()
     clearError();
     setComplete(false);
 
+    // App Store Review Guideline 5.1.1(v): revoke Sign in with Apple tokens
+    // while the user is still signed in, then delete. A revocation failure is
+    // logged (never the code) and does not stop the deletion.
+    const QString authorizationCode = m_appleAuthorizationCode;
+    m_appleAuthorizationCode.clear();
+    if (QtFirebaseAuthHelpers::shouldRevokeAppleToken(providerIds(), authorizationCode)) {
+        qInfo() << "[FIREBASE AUTH] deleteUser: revoking Sign in with Apple tokens first";
+        QtFirebaseAppleSignIn::revokeToken(this, authorizationCode,
+            [this](bool success, const QString &errorMessage) {
+                if (success)
+                    qInfo() << "[FIREBASE AUTH] deleteUser: Apple tokens revoked";
+                else
+                    qWarning() << "[FIREBASE AUTH] deleteUser: Apple token revocation failed, deleting anyway:" << errorMessage;
+                deleteCurrentUser();
+            });
+        return;
+    }
+    if (isAppleUser())
+        qWarning() << "[FIREBASE AUTH] deleteUser: Apple user without a fresh authorization code; tokens not revoked";
+    deleteCurrentUser();
+}
+
+void QtFirebaseAuth::deleteCurrentUser()
+{
+    if (!m_auth || !m_auth->current_user().is_valid()) {
+        qWarning() << "[FIREBASE AUTH] deleteUser: no signed-in Firebase user left to delete";
+        setError(ErrorFailure, QStringLiteral("No signed-in Firebase user to delete"));
+        setComplete(true);
+        return;
+    }
     qInfo() << "[FIREBASE AUTH] deleteUser: deleting current Firebase Auth user"
             << "uid:" << QString::fromStdString(m_auth->current_user().uid())
-            << "email:" << QString::fromStdString(m_auth->current_user().email());
+            << "email:" << maskEmail(QString::fromStdString(m_auth->current_user().email()));
     firebase::Future<void> future = m_auth->current_user().Delete();
     qFirebase->addFuture(__QTFIREBASE_ID + QStringLiteral(".auth.deleteUser"), future);
 }
@@ -200,7 +231,7 @@ bool QtFirebaseAuth::signedIn() const
 
 void QtFirebaseAuth::signIn(const QString &email, const QString &pass)
 {
-    qInfo() << "[FIREBASE AUTH] signIn called for email:" << email;
+    qInfo() << "[FIREBASE AUTH] signIn called for email:" << maskEmail(email);
     if(running())
     {
         qInfo() << "[FIREBASE AUTH] signIn: Already running, ignoring request";
@@ -430,6 +461,7 @@ void QtFirebaseAuth::requestAppleSignIn()
     m_pendingAppleIdToken.clear();
     m_pendingAppleEmail.clear();
     m_pendingAppleFullName.clear();
+    m_appleAuthorizationCode.clear();
 
     QtFirebaseAppleSignIn::requestSignIn(this, [this](const QtFirebaseAppleSignIn::Result &result) {
         if (!result.success) {
@@ -446,6 +478,9 @@ void QtFirebaseAuth::requestAppleSignIn()
         }
         m_pendingAppleEmail = result.email;
         m_pendingAppleFullName = result.fullName;
+        // Only account-deletion reauth needs the code (to revoke tokens); keep it nowhere else.
+        if (m_action == ActionReauthenticate)
+            m_appleAuthorizationCode = result.authorizationCode;
         completeAppleSignIn(result.idToken, result.rawNonce);
     });
 }
@@ -537,6 +572,21 @@ bool QtFirebaseAuth::hasProvider(const char *providerId) const
     return false;
 }
 
+QStringList QtFirebaseAuth::providerIds() const
+{
+    QStringList ids;
+    if (!signedIn() || !m_auth)
+        return ids;
+    for (const auth::UserInfoInterface &provider : m_auth->current_user().provider_data())
+        ids.append(QString::fromStdString(provider.provider_id()));
+    return ids;
+}
+
+QString QtFirebaseAuth::maskEmail(const QString &email) const
+{
+    return QtFirebaseAuthHelpers::maskEmail(email);
+}
+
 QString QtFirebaseAuth::federatedProviderName() const
 {
     return m_federatedProvider;
@@ -612,6 +662,7 @@ void QtFirebaseAuth::signOut()
     setAction(ActionSignOut);
     qInfo() << "[FIREBASE AUTH] signOut called";
     m_auth->SignOut();
+    m_appleAuthorizationCode.clear();
     clearError();
     setToken(QString());
     setComplete(false);
@@ -750,7 +801,7 @@ void QtFirebaseAuth::init()
         const bool validUser = (m_auth && m_auth->current_user().is_valid());
         qInfo() << "[FIREBASE AUTH] init: current_user valid:" << validUser
                 << "uid:" << (validUser ? QString::fromStdString(m_auth->current_user().uid()) : QString())
-                << "email:" << (validUser ? QString::fromStdString(m_auth->current_user().email()) : QString());
+                << "email:" << (validUser ? maskEmail(QString::fromStdString(m_auth->current_user().email())) : QString());
         setSignIn(validUser);
         if (validUser) {
             qInfo() << "[FIREBASE AUTH] init: session restored, fetching token";
@@ -781,7 +832,7 @@ void QtFirebaseAuth::onFutureEvent(QString eventId, firebase::FutureBase future)
                 const firebase::auth::AuthResult* result = reinterpret_cast<const firebase::auth::AuthResult*>(future.result_void());
                 if (result != nullptr) {
                     auth::User user = result->user;
-                    qDebug() << "[FIREBASE AUTH] User registered successfully. Email:" << QString::fromStdString(user.email()) << "UID:" << QString::fromStdString(user.uid());
+                    qDebug() << "[FIREBASE AUTH] User registered successfully. Email:" << maskEmail(QString::fromStdString(user.email())) << "UID:" << QString::fromStdString(user.uid());
                     qDebug() << "[FIREBASE AUTH] Sending email verification...";
                     qFirebase->addFuture(__QTFIREBASE_ID + QStringLiteral(".auth.sendemailverify"), user.SendEmailVerification());
                     setSignIn(true);
@@ -824,7 +875,7 @@ void QtFirebaseAuth::onFutureEvent(QString eventId, firebase::FutureBase future)
                 const firebase::auth::AuthResult* result = reinterpret_cast<const firebase::auth::AuthResult*>(future.result_void());
                 if (result != nullptr) {
                     auth::User user = result->user;
-                    qDebug() << "[FIREBASE AUTH] Sign in successful. Email:" << QString::fromStdString(user.email()) << "UID:" << QString::fromStdString(user.uid());
+                    qDebug() << "[FIREBASE AUTH] Sign in successful. Email:" << maskEmail(QString::fromStdString(user.email())) << "UID:" << QString::fromStdString(user.uid());
                     setSignIn(true);
                     qDebug() << "[FIREBASE AUTH] Getting authentication token...";
                     getToken();
@@ -967,7 +1018,7 @@ void QtFirebaseAuth::getToken(bool forceRefresh) {
     if (m_auth && m_auth->current_user().is_valid()) {
         const QString email = QString::fromStdString(m_auth->current_user().email());
         const QString uid = QString::fromStdString(m_auth->current_user().uid());
-        qInfo() << "[FIREBASE AUTH] getToken: requesting token" << "uid:" << uid << "email:" << email << "forceRefresh:" << forceRefresh;
+        qInfo() << "[FIREBASE AUTH] getToken: requesting token" << "uid:" << uid << "email:" << maskEmail(email) << "forceRefresh:" << forceRefresh;
         m_auth->current_user().GetToken(forceRefresh).OnCompletion([this, uid](const firebase::Future<std::string>& result) {
             if (result.status() == firebase::kFutureStatusComplete) {
                 if (result.error() == firebase::auth::kAuthErrorNone) {
@@ -1027,7 +1078,7 @@ void QtFirebaseAuth::onIdTokenChanged()
     if (m_auth && m_auth->current_user().is_valid()) {
         qInfo() << "[FIREBASE AUTH] onIdTokenChanged: user valid, refreshing token";
         getToken();
-        qInfo() << "[FIREBASE AUTH] onIdTokenChanged: email:" << QString::fromStdString(m_auth->current_user().email());
+        qInfo() << "[FIREBASE AUTH] onIdTokenChanged: email:" << maskEmail(QString::fromStdString(m_auth->current_user().email()));
     } else {
         qInfo() << "[FIREBASE AUTH] onIdTokenChanged: no user signed in";
     }
@@ -1038,7 +1089,7 @@ void QtFirebaseAuth::onAuthStateChanged()
 {
     if (m_auth && m_auth->current_user().is_valid()) {
         setSignIn(true);
-        qInfo() << "[FIREBASE AUTH] onAuthStateChanged: signed in:" << QString::fromStdString(m_auth->current_user().email())
+        qInfo() << "[FIREBASE AUTH] onAuthStateChanged: signed in:" << maskEmail(QString::fromStdString(m_auth->current_user().email()))
                 << "uid:" << QString::fromStdString(m_auth->current_user().uid());
     } else {
         setSignIn(false);

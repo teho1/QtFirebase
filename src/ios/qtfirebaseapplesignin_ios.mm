@@ -5,6 +5,7 @@
 
 #import <AuthenticationServices/AuthenticationServices.h>
 #import <UIKit/UIKit.h>
+#import <objc/message.h>
 
 #include <QMetaObject>
 
@@ -110,6 +111,12 @@ void deliverImmediately(QtFirebaseAuth *auth, const AppleSignInCallback &callbac
     result.rawNonce = g_pendingRawNonce;
     if (credential.email)
         result.email = QString::fromNSString(credential.email);
+    if (credential.authorizationCode) {
+        NSString *code = QTFIREBASE_AUTORELEASE([[NSString alloc] initWithData:credential.authorizationCode
+                                                                       encoding:NSUTF8StringEncoding]);
+        if (code)
+            result.authorizationCode = QString::fromNSString(code);
+    }
     if (credential.fullName) {
         NSString *name = [NSPersonNameComponentsFormatter
             localizedStringFromPersonNameComponents:credential.fullName
@@ -186,6 +193,43 @@ void requestSignIn(QtFirebaseAuth *auth, AppleSignInCallback callback)
     // ASAuthorizationController holds its delegate weakly; keep the controller alive until it finishes.
     g_delegate.controller = controller;
     [controller performRequests];
+}
+
+void revokeToken(QtFirebaseAuth *auth, const QString &authorizationCode, RevokeCallback callback)
+{
+    if (!auth || !callback)
+        return;
+
+    auto deliverRevoke = [auth, callback](bool success, const QString &errorMessage) {
+        QMetaObject::invokeMethod(auth, [callback, success, errorMessage]() {
+            callback(success, errorMessage);
+        }, Qt::QueuedConnection);
+    };
+
+    // FIRAuth is the Firebase iOS SDK object the C++ SDK wraps; its Swift
+    // header is not importable from this target, so call it via the runtime.
+    Class authClass = NSClassFromString(@"FIRAuth");
+    SEL authSelector = NSSelectorFromString(@"auth");
+    SEL revokeSelector = NSSelectorFromString(@"revokeTokenWithAuthorizationCode:completion:");
+    id firAuth = (authClass && [authClass respondsToSelector:authSelector])
+        ? ((id (*)(id, SEL))objc_msgSend)(authClass, authSelector)
+        : nil;
+    if (!firAuth || ![firAuth respondsToSelector:revokeSelector]) {
+        deliverRevoke(false, QStringLiteral("FIRAuth revokeTokenWithAuthorizationCode is not available."));
+        return;
+    }
+
+    void (^completion)(NSError *) = ^(NSError *error) {
+        if (error) {
+            deliverRevoke(false, error.localizedDescription
+                ? QString::fromNSString(error.localizedDescription)
+                : QStringLiteral("Apple token revocation failed."));
+            return;
+        }
+        deliverRevoke(true, QString());
+    };
+    ((void (*)(id, SEL, NSString *, void (^)(NSError *)))objc_msgSend)(
+        firAuth, revokeSelector, authorizationCode.toNSString(), completion);
 }
 
 } // namespace QtFirebaseAppleSignIn

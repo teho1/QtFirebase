@@ -84,6 +84,7 @@ public slots:
     bool appleSignInAvailable() const{return false;}
     QString providerId() const{return QString();}
     QString localizedErrorMessage(int errorId) const { Q_UNUSED(errorId) return QString(); }
+    QString maskEmail(const QString& email) const { return email.isEmpty() ? QString() : QStringLiteral("***"); }
     QString photoUrl() const{return QString();}
     QString phoneNumber() const{return QString();}
     QString uid() const{return QString();}

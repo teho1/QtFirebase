@@ -24,6 +24,16 @@ void requestSignIn(QtFirebaseAuth *auth, AppleSignInCallback callback)
     }, Qt::QueuedConnection);
 }
 
+void revokeToken(QtFirebaseAuth *auth, const QString &authorizationCode, RevokeCallback callback)
+{
+    Q_UNUSED(authorizationCode)
+    if (!auth || !callback)
+        return;
+    QMetaObject::invokeMethod(auth, [callback]() {
+        callback(false, QStringLiteral("Sign in with Apple is only available on iOS."));
+    }, Qt::QueuedConnection);
+}
+
 #endif
 
 } // namespace QtFirebaseAppleSignIn

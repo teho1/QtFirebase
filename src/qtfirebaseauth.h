@@ -103,6 +103,8 @@ public slots:
     bool appleSignInAvailable() const;
     QString providerId() const;
     QString localizedErrorMessage(int errorId) const;
+    // Log-safe form of an email address ("t***@example.com").
+    QString maskEmail(const QString& email) const;
     QString photoUrl() const;
     QString uid() const;
     
@@ -139,6 +141,8 @@ private:
     void completeAppleSignIn(const QString& idToken, const QString& rawNonce);
     void applyAppleFullNameIfMissing();
     bool hasProvider(const char* providerId) const;
+    QStringList providerIds() const;
+    void deleteCurrentUser();
     QString federatedProviderName() const;
     void handleFederatedFailure(const QString& eventId, const firebase::FutureBase& future);
 
@@ -162,6 +166,8 @@ private:
     QString m_pendingAppleIdToken;
     QString m_pendingAppleEmail;
     QString m_pendingAppleFullName;
+    // Fresh Apple authorization code from the deletion reauth; memory only, never logged.
+    QString m_appleAuthorizationCode;
     // "Google" or "Apple": provider of the current federated action, used in error messages.
     QString m_federatedProvider = QStringLiteral("Google");
     Q_DISABLE_COPY(QtFirebaseAuth)
