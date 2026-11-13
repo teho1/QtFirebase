@@ -24,6 +24,21 @@ void requestSignIn(QtFirebaseAuth *auth, AppleSignInCallback callback)
     }, Qt::QueuedConnection);
 }
 
+void authenticateWithFirebase(QtFirebaseAuth *auth, FirebaseOperation operation,
+                              const QString &idToken, const QString &rawNonce,
+                              FirebaseCallback callback)
+{
+    Q_UNUSED(operation)
+    Q_UNUSED(idToken)
+    Q_UNUSED(rawNonce)
+    if (!auth || !callback)
+        return;
+    QMetaObject::invokeMethod(auth, [callback]() {
+        callback(firebase::auth::kAuthErrorFailure,
+                 QStringLiteral("Sign in with Apple is only available on iOS."));
+    }, Qt::QueuedConnection);
+}
+
 void revokeToken(QtFirebaseAuth *auth, const QString &authorizationCode, RevokeCallback callback)
 {
     Q_UNUSED(authorizationCode)

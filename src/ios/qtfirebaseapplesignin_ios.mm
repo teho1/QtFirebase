@@ -2,6 +2,7 @@
 
 #include "../qtfirebaseapplenonce.h"
 #include "../qtfirebaseauth.h"
+#include "../qtfirebaseauthhelpers.h"
 
 #import <AuthenticationServices/AuthenticationServices.h>
 #import <UIKit/UIKit.h>
@@ -64,6 +65,24 @@ void deliverImmediately(QtFirebaseAuth *auth, const AppleSignInCallback &callbac
         result.errorMessage = errorMessage;
         callback(result);
     }, Qt::QueuedConnection);
+}
+
+id firAuthInstance()
+{
+    // FIRAuth is the Firebase iOS SDK object the C++ SDK wraps; its Swift
+    // header is not importable from this target, so call it via the runtime.
+    Class authClass = NSClassFromString(@"FIRAuth");
+    SEL authSelector = NSSelectorFromString(@"auth");
+    return (authClass && [authClass respondsToSelector:authSelector])
+        ? ((id (*)(id, SEL))objc_msgSend)(authClass, authSelector)
+        : nil;
+}
+
+int authErrorFromNSError(NSError *error)
+{
+    if (![error.domain isEqualToString:@"FIRAuthErrorDomain"])
+        return ::firebase::auth::kAuthErrorFailure;
+    return QtFirebaseAuthHelpers::authErrorFromFirAuthErrorCode(error.code);
 }
 
 } // namespace
@@ -195,6 +214,65 @@ void requestSignIn(QtFirebaseAuth *auth, AppleSignInCallback callback)
     [controller performRequests];
 }
 
+void authenticateWithFirebase(QtFirebaseAuth *auth, FirebaseOperation operation,
+                              const QString &idToken, const QString &rawNonce,
+                              FirebaseCallback callback)
+{
+    if (!auth || !callback)
+        return;
+
+    auto deliverAuth = [auth, callback](int authError, const QString &errorMessage) {
+        QMetaObject::invokeMethod(auth, [callback, authError, errorMessage]() {
+            callback(authError, errorMessage);
+        }, Qt::QueuedConnection);
+    };
+
+    Class providerClass = NSClassFromString(@"FIROAuthProvider");
+    SEL appleSelector = NSSelectorFromString(@"appleCredentialWithIDToken:rawNonce:fullName:");
+    SEL oidcSelector = NSSelectorFromString(@"credentialWithProviderID:IDToken:rawNonce:");
+    id credential = nil;
+    if (providerClass && [providerClass respondsToSelector:appleSelector]) {
+        credential = ((id (*)(id, SEL, NSString *, NSString *, NSPersonNameComponents *))objc_msgSend)(
+            providerClass, appleSelector, idToken.toNSString(), rawNonce.toNSString(), nil);
+    } else if (providerClass && [providerClass respondsToSelector:oidcSelector]) {
+        credential = ((id (*)(id, SEL, NSString *, NSString *, NSString *))objc_msgSend)(
+            providerClass, oidcSelector, @"apple.com", idToken.toNSString(), rawNonce.toNSString());
+    }
+    if (!credential) {
+        deliverAuth(::firebase::auth::kAuthErrorInvalidCredential,
+                    QStringLiteral("FIROAuthProvider Apple credential is not available."));
+        return;
+    }
+
+    id target = firAuthInstance();
+    SEL selector = NSSelectorFromString(@"signInWithCredential:completion:");
+    if (operation != FirebaseOperation::SignIn) {
+        target = target ? ((id (*)(id, SEL))objc_msgSend)(target, NSSelectorFromString(@"currentUser")) : nil;
+        selector = NSSelectorFromString(operation == FirebaseOperation::Link
+            ? @"linkWithCredential:completion:"
+            : @"reauthenticateWithCredential:completion:");
+    }
+    if (!target || ![target respondsToSelector:selector]) {
+        deliverAuth(::firebase::auth::kAuthErrorFailure,
+                    operation == FirebaseOperation::SignIn
+                        ? QStringLiteral("FIRAuth is not available.")
+                        : QStringLiteral("No signed-in Firebase user."));
+        return;
+    }
+
+    void (^completion)(id, NSError *) = ^(id authResult, NSError *error) {
+        Q_UNUSED(authResult)
+        if (error) {
+            deliverAuth(authErrorFromNSError(error), error.localizedDescription
+                ? QString::fromNSString(error.localizedDescription)
+                : QStringLiteral("Sign in with Apple failed."));
+            return;
+        }
+        deliverAuth(::firebase::auth::kAuthErrorNone, QString());
+    };
+    ((void (*)(id, SEL, id, void (^)(id, NSError *)))objc_msgSend)(target, selector, credential, completion);
+}
+
 void revokeToken(QtFirebaseAuth *auth, const QString &authorizationCode, RevokeCallback callback)
 {
     if (!auth || !callback)
@@ -206,14 +284,8 @@ void revokeToken(QtFirebaseAuth *auth, const QString &authorizationCode, RevokeC
         }, Qt::QueuedConnection);
     };
 
-    // FIRAuth is the Firebase iOS SDK object the C++ SDK wraps; its Swift
-    // header is not importable from this target, so call it via the runtime.
-    Class authClass = NSClassFromString(@"FIRAuth");
-    SEL authSelector = NSSelectorFromString(@"auth");
     SEL revokeSelector = NSSelectorFromString(@"revokeTokenWithAuthorizationCode:completion:");
-    id firAuth = (authClass && [authClass respondsToSelector:authSelector])
-        ? ((id (*)(id, SEL))objc_msgSend)(authClass, authSelector)
-        : nil;
+    id firAuth = firAuthInstance();
     if (!firAuth || ![firAuth respondsToSelector:revokeSelector]) {
         deliverRevoke(false, QStringLiteral("FIRAuth revokeTokenWithAuthorizationCode is not available."));
         return;
