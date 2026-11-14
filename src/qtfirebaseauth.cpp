@@ -194,6 +194,40 @@ void QtFirebaseAuth::deleteUser()
     deleteCurrentUser();
 }
 
+// Revokes the Sign in with Apple tokens with the authorization code from the latest
+// reauthentication, without deleting the user: the app's server deletes the account and
+// the Firebase user afterwards (App Store Review Guideline 5.1.1(v)). Firebase needs the
+// user to still exist for the revocation. Emits completed(success, ActionRevokeAppleToken).
+void QtFirebaseAuth::revokeAppleToken()
+{
+    if (running()) {
+        qWarning() << "[FIREBASE AUTH] revokeAppleToken: ignored — another auth action is in progress";
+        return;
+    }
+    setAction(ActionRevokeAppleToken);
+    clearError();
+    setComplete(false);
+
+    const QString authorizationCode = m_appleAuthorizationCode;
+    m_appleAuthorizationCode.clear();
+    if (!signedIn() || !QtFirebaseAuthHelpers::shouldRevokeAppleToken(providerIds(), authorizationCode)) {
+        qWarning() << "[FIREBASE AUTH] revokeAppleToken: no signed-in Apple user with a fresh authorization code";
+        setError(ErrorFailure, QStringLiteral("No Sign in with Apple authorization code to revoke"));
+        setComplete(true);
+        return;
+    }
+    QtFirebaseAppleSignIn::revokeToken(this, authorizationCode,
+        [this](bool success, const QString &errorMessage) {
+            if (success) {
+                qInfo() << "[FIREBASE AUTH] revokeAppleToken: Apple tokens revoked";
+            } else {
+                qWarning() << "[FIREBASE AUTH] revokeAppleToken: revocation failed:" << errorMessage;
+                setError(ErrorFailure, errorMessage);
+            }
+            setComplete(true);
+        });
+}
+
 void QtFirebaseAuth::deleteCurrentUser()
 {
     if (!m_auth || !m_auth->current_user().is_valid()) {
