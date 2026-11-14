@@ -1161,9 +1161,11 @@ void QtFirebaseAuth::updateUserProfile(const QString& displayName, const QString
     
     auth::User user = m_auth->current_user();
     auth::User::UserProfile profile;
-    
+    // UserProfile only stores const char*; the UTF-8 buffer must outlive UpdateUserProfile().
+    const QByteArray displayNameUtf8 = displayName.toUtf8();
+
     if (!displayName.isEmpty()) {
-        profile.display_name = displayName.toUtf8().constData();
+        profile.display_name = displayNameUtf8.constData();
     }
     
     // Phone number cannot be updated via UserProfile - it requires phone authentication
