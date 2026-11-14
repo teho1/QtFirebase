@@ -53,7 +53,8 @@ public:
         ActionPasswordReset,
         // Appended so existing numeric action ids stay stable.
         ActionSignInWithApple,
-        ActionLinkWithApple
+        ActionLinkWithApple,
+        ActionRevokeAppleToken
     };
     Q_ENUM(Action)
 
@@ -77,6 +78,7 @@ public slots:
     void signOut();
     void sendPasswordResetEmail(const QString& email);
     void deleteUser();
+    void revokeAppleToken();
     // Forces a fresh ID token from Firebase (bypassing the local cache) and
     // emits tokenChanged() once it arrives. Used to recover from transient 401s.
     void refreshToken();
